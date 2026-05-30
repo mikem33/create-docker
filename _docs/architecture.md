@@ -167,6 +167,50 @@ create-docker
      └─ docker compose up -d --build  (optional)
 ```
 
+## Project lifecycle
+
+A project moves through four stages, each handled by a dedicated script:
+
+```
+create-docker my-project
+       │
+       │  Scaffolds files, generates cert, adds /etc/hosts entries,
+       │  starts the proxy (first run), optionally starts containers.
+       │
+       ▼
+  [running]  ◄────────────────────────────────────┐
+       │                                           │
+       │ stop-docker my-project                    │ start-docker my-project
+       │                                           │
+       ▼                                           │
+  [stopped]  ─────────────────────────────────────┘
+       │
+       │ delete-docker my-project
+       │
+       ▼
+  [deleted]
+```
+
+### stop-docker / start-docker
+
+`stop-docker` runs `docker compose stop` — containers are paused but not removed. All data volumes are preserved. Run `start-docker` to resume exactly where you left off.
+
+`start-docker` checks that the global proxy is running before bringing the project up. If the proxy was stopped (e.g. after a reboot), it restarts it automatically.
+
+Neither script touches the proxy, the TLS certificates, the Traefik config, `/etc/hosts`, or any other project.
+
+### delete-docker
+
+`delete-docker` is a full teardown. In order:
+
+1. `docker compose down -v --rmi local` — stops containers, removes volumes and any images built from a `Dockerfile` in the project. Shared pulled images (`mysql:8.0`, `nginx:alpine`, etc.) are **not** removed.
+2. `rm -rf` the project folder
+3. Removes the TLS certificate pair from `certs/`
+4. Removes the Traefik dynamic config from `conf/` (Traefik picks this up instantly via `watch: true`)
+5. Removes the project's `/etc/hosts` entries
+
+The proxy and all other projects are unaffected.
+
 ## Project folder structure
 
 By default everything lives under `~/Dev/`. Override with the `CREATE_DOCKER_DIR` environment variable:

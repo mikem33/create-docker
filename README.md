@@ -16,7 +16,7 @@ A Bash script that spins up local web development environments with a single com
 |---|---|---|
 | [Docker Engine](https://docs.docker.com/engine/install/) | Container runtime | See distro instructions |
 | [Docker Compose plugin](https://docs.docker.com/compose/install/) | Multi-container orchestration | Bundled with Docker Desktop / `docker-compose-plugin` package |
-| [mkcert](https://github.com/FiloSottile/mkcert) | Trusted local TLS certificates | `sudo pacman -S mkcert` / `brew install mkcert` |
+| [mkcert](https://github.com/FiloSottile/mkcert) | Trusted local TLS certificates | [Install instructions](https://github.com/FiloSottile/mkcert#installation) |
 
 The script checks for all three on startup and prints installation instructions if anything is missing.
 
@@ -29,10 +29,14 @@ git clone https://github.com/your-username/create-docker.git ~/Dev/create-docker
 # Make the scripts executable
 chmod +x ~/Dev/create-docker/scripts/create-docker.sh
 chmod +x ~/Dev/create-docker/scripts/delete-docker.sh
+chmod +x ~/Dev/create-docker/scripts/start-docker.sh
+chmod +x ~/Dev/create-docker/scripts/stop-docker.sh
 
 # Add to PATH (assuming ~/.local/bin is in your PATH)
 ln -s ~/Dev/create-docker/scripts/create-docker.sh ~/.local/bin/create-docker
 ln -s ~/Dev/create-docker/scripts/delete-docker.sh ~/.local/bin/delete-docker
+ln -s ~/Dev/create-docker/scripts/start-docker.sh ~/.local/bin/start-docker
+ln -s ~/Dev/create-docker/scripts/stop-docker.sh ~/.local/bin/stop-docker
 ```
 
 > **Note:** If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
@@ -54,6 +58,18 @@ delete-docker my-project   # skips the selection prompt
 ```
 
 The delete script stops all containers, removes volumes and project-specific images, deletes the project folder, TLS certificate, Traefik config, and `/etc/hosts` entries. Shared base images (MySQL, Nginx, etc.) are left untouched.
+
+To start or stop a project without removing it:
+
+```bash
+start-docker              # lists projects and prompts for selection
+start-docker my-project   # starts directly
+
+stop-docker               # lists projects and prompts for selection
+stop-docker my-project    # stops directly
+```
+
+`stop-docker` uses `docker compose stop` — containers and volumes are preserved. Run `start-docker` to bring them back up.
 
 ```
   create-docker  — local web development environment creator
