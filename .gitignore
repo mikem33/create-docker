@@ -1,0 +1,6 @@
+# Secrets and local files
+.env
+*.pem
+*.key
+*.log
+.DS_Store
