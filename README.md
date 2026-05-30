@@ -26,11 +26,13 @@ The script checks for all three on startup and prints installation instructions 
 # Clone the repository
 git clone https://github.com/your-username/create-docker.git ~/Dev/create-docker
 
-# Make the script executable
-chmod +x ~/Dev/create-docker/create-docker.sh
+# Make the scripts executable
+chmod +x ~/Dev/create-docker/scripts/create-docker.sh
+chmod +x ~/Dev/create-docker/scripts/delete-docker.sh
 
 # Add to PATH (assuming ~/.local/bin is in your PATH)
-ln -s ~/Dev/create-docker/create-docker.sh ~/.local/bin/create-docker
+ln -s ~/Dev/create-docker/scripts/create-docker.sh ~/.local/bin/create-docker
+ln -s ~/Dev/create-docker/scripts/delete-docker.sh ~/.local/bin/delete-docker
 ```
 
 > **Note:** If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
@@ -43,6 +45,15 @@ Run `create-docker` from any directory and follow the prompts:
 create-docker              # interactive — asks for project name first
 create-docker my-project   # skips the project name prompt
 ```
+
+To remove a project, use `delete-docker`:
+
+```bash
+delete-docker              # lists projects and prompts for selection
+delete-docker my-project   # skips the selection prompt
+```
+
+The delete script stops all containers, removes volumes and project-specific images, deletes the project folder, TLS certificate, Traefik config, and `/etc/hosts` entries. Shared base images (MySQL, Nginx, etc.) are left untouched.
 
 ```
   create-docker  — local web development environment creator
