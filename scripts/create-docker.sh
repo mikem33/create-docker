@@ -95,12 +95,12 @@ check_dependencies() {
 setup_proxy() {
     # If proxy is already configured and running, nothing to do
     if [ -f "$PROXY_DIR/docker-compose.yml" ]; then
-        if docker compose -f "$PROXY_DIR/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
+        if docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
             info "Global proxy is already running."
             return
         else
             info "Starting existing global proxy..."
-            docker compose -f "$PROXY_DIR/docker-compose.yml" up -d
+            docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" up -d
             success "Global proxy started."
             return
         fi
@@ -198,7 +198,7 @@ networks:
     external: true
 PROXY_EOF
 
-    docker compose -f "$PROXY_DIR/docker-compose.yml" up -d
+    docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" up -d
     success "Global proxy (Traefik) is running."
 }
 
@@ -641,6 +641,44 @@ networks:
   internal:
     driver: bridge
 EOF
+
+    # Welcome page — shown before WordPress is installed.
+    # Delete or overwrite src/ when you drop in WordPress.
+    cat > "$dir/src/index.php" <<'WELCOME'
+<?php
+$host = $_SERVER['HTTP_HOST'] ?? 'your-project.test';
+$slug = explode('.', $host)[0];
+?><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ready — <?= htmlspecialchars($host) ?></title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 24px; color: #1a1a1a; }
+    h1   { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    p    { color: #555; margin: 0.4rem 0; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre  { background: #f0f0f0; padding: 12px; border-radius: 6px; overflow-x: auto; }
+    .step { margin: 1.5rem 0 0.5rem; font-weight: 600; }
+    a    { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>Your WordPress environment is ready.</h1>
+  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($host) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($host) ?>-mail.test" target="_blank">MailHog</a></p>
+
+  <p class="step">Option A &mdash; fresh WordPress install</p>
+  <p>Extract WordPress into <code>src/</code>, or run:</p>
+  <pre><code>docker exec <?= htmlspecialchars($slug) ?>-web sh -c "curl -sL https://wordpress.org/latest.tar.gz | tar xz --strip-components=1 -C /var/www/html"</code></pre>
+
+  <p class="step">Option B &mdash; clone your existing repo</p>
+  <pre><code>git clone https://github.com/you/your-repo.git src/</code></pre>
+
+  <p style="margin-top:2rem;font-size:0.85rem;color:#999;">Delete or overwrite this file once WordPress is in place.</p>
+</body>
+</html>
+WELCOME
 }
 
 # ─── WordPress / Nginx + FPM container ───────────────────────────────────────
@@ -865,6 +903,44 @@ networks:
   internal:
     driver: bridge
 EOF
+
+    # Welcome page — shown before WordPress is installed.
+    # Delete or overwrite src/ when you drop in WordPress.
+    cat > "$dir/src/index.php" <<'WELCOME'
+<?php
+$host = $_SERVER['HTTP_HOST'] ?? 'your-project.test';
+$slug = explode('.', $host)[0];
+?><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ready — <?= htmlspecialchars($host) ?></title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 0 24px; color: #1a1a1a; }
+    h1   { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    p    { color: #555; margin: 0.4rem 0; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre  { background: #f0f0f0; padding: 12px; border-radius: 6px; overflow-x: auto; }
+    .step { margin: 1.5rem 0 0.5rem; font-weight: 600; }
+    a    { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>Your WordPress environment is ready.</h1>
+  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($host) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($host) ?>-mail.test" target="_blank">MailHog</a></p>
+
+  <p class="step">Option A &mdash; fresh WordPress install</p>
+  <p>Extract WordPress into <code>src/</code>, or run:</p>
+  <pre><code>docker exec <?= htmlspecialchars($slug) ?>-web sh -c "curl -sL https://wordpress.org/latest.tar.gz | tar xz --strip-components=1 -C /var/www/html"</code></pre>
+
+  <p class="step">Option B &mdash; clone your existing repo</p>
+  <pre><code>git clone https://github.com/you/your-repo.git src/</code></pre>
+
+  <p style="margin-top:2rem;font-size:0.85rem;color:#999;">Delete or overwrite this file once WordPress is in place.</p>
+</body>
+</html>
+WELCOME
 }
 
 

@@ -64,12 +64,12 @@ ensure_proxy_running() {
         die "Global proxy not found. Run create-docker first to set it up."
     fi
 
-    if docker compose -f "$PROXY_DIR/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
+    if docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
         return  # already running
     fi
 
     info "Starting global proxy..."
-    docker compose -f "$PROXY_DIR/docker-compose.yml" up -d
+    docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" up -d
     success "Global proxy started."
 }
 

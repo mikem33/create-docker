@@ -148,6 +148,8 @@ main() {
     fi
 
     # ── 2. Remove project folder ──────────────────────────────────────────────
+    # cd away first so the shell is not left inside a deleted directory
+    cd "$DEV_DIR"
     info "Removing project folder..."
     rm -rf "$project_dir"
     success "Removed: $project_dir"
