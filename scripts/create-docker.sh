@@ -612,6 +612,7 @@ services:
       PMA_HOST: db
       PMA_USER: \${MYSQL_USER}
       PMA_PASSWORD: \${MYSQL_PASSWORD}
+      UPLOAD_LIMIT: 256M
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${slug}-pma.rule=Host(\`${slug}-db.test\`)"
@@ -879,6 +880,7 @@ services:
       PMA_HOST: db
       PMA_USER: \${MYSQL_USER}
       PMA_PASSWORD: \${MYSQL_PASSWORD}
+      UPLOAD_LIMIT: 256M
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${slug}-pma.rule=Host(\`${slug}-db.test\`)"
