@@ -339,3 +339,43 @@ To stop all projects at once:
 # Stop all running containers across all projects
 docker stop $(docker ps -q)
 ```
+
+---
+
+## WP-CLI
+
+WP-CLI is installed in both WordPress container variants and available as `wp` inside the container. Run commands with `docker exec`:
+
+```bash
+# Check WP-CLI and PHP version
+docker exec {slug}-web wp --info --allow-root
+
+# Download WordPress core into src/
+docker exec {slug}-web wp core download --allow-root
+
+# Install WordPress (after core download)
+docker exec {slug}-web wp core install \
+  --url=https://{slug}.test \
+  --title="My Site" \
+  --admin_user=admin \
+  --admin_password=secret \
+  --admin_email=admin@example.com \
+  --allow-root
+
+# Install a plugin
+docker exec {slug}-web wp plugin install woocommerce --activate --allow-root
+
+# Update all plugins
+docker exec {slug}-web wp plugin update --all --allow-root
+
+# Export the database
+docker exec {slug}-web wp db export /var/www/html/backup.sql --allow-root
+```
+
+> `--allow-root` is required because the process runs as `root` inside the container.
+
+For Nginx + FPM projects the PHP container is named `{slug}-php` (not `{slug}-web`):
+
+```bash
+docker exec {slug}-php wp --info --allow-root
+```

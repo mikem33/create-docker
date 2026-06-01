@@ -539,6 +539,11 @@ RUN curl -sL \
         -o /usr/local/bin/mhsendmail \
     && chmod +x /usr/local/bin/mhsendmail
 
+# Install WP-CLI — manage WordPress from the command line inside the container
+RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+        -o /usr/local/bin/wp \
+    && chmod +x /usr/local/bin/wp
+
 # PHP settings tuned for WordPress development
 RUN { \
         echo "upload_max_filesize = 64M"; \
@@ -755,6 +760,11 @@ RUN curl -sL \
         https://github.com/mailhog/mhsendmail/releases/download/v0.2.0/mhsendmail_linux_amd64 \
         -o /usr/local/bin/mhsendmail \
     && chmod +x /usr/local/bin/mhsendmail
+
+# Install WP-CLI — manage WordPress from the command line inside the container
+RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+        -o /usr/local/bin/wp \
+    && chmod +x /usr/local/bin/wp
 
 # PHP settings tuned for WordPress development
 RUN { \
