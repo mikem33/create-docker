@@ -207,7 +207,7 @@ PROXY_EOF
 add_hosts_entry() {
     local domain="$1"
 
-    if grep -qF "$domain" /etc/hosts; then
+    if grep -q "[[:space:]]${domain}$" /etc/hosts; then
         info "Host entry for ${BOLD}${domain}${RESET} already exists."
         return
     fi
@@ -319,12 +319,24 @@ create_php_apache() {
     cat > "$dir/Dockerfile" <<'EOF'
 FROM php:8.3-apache
 
+# Match www-data's UID/GID to the host user, so files created by Apache
+# inside the container are owned by you on the host, not by an unmapped UID.
+RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
+    find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
+    find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
+
 # Enable common extensions for PHP development
 RUN docker-php-ext-install pdo pdo_mysql mysqli \
     && a2enmod rewrite
 
 # Allow .htaccess files to override Apache directives (needed for most frameworks)
-RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
+# Move Apache to port 8080 so it can run as www-data (unprivileged ports require root)
+RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
+    && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
+
+EXPOSE 8080
+
+USER www-data
 EOF
 
     cat > "$dir/docker-compose.yml" <<EOF
@@ -340,7 +352,7 @@ services:
       - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
       - "traefik.http.routers.${slug}.entrypoints=websecure"
       - "traefik.http.routers.${slug}.tls=true"
-      - "traefik.http.services.${slug}.loadbalancer.server.port=80"
+      - "traefik.http.services.${slug}.loadbalancer.server.port=8080"
     networks:
       - proxy
 
@@ -374,8 +386,15 @@ create_php_nginx() {
     cat > "$dir/Dockerfile" <<'EOF'
 FROM php:8.3-fpm
 
+# Match www-data's UID/GID to the host user
+RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
+    find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
+    find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
+
 # Enable common extensions for PHP development
 RUN docker-php-ext-install pdo pdo_mysql mysqli
+
+USER www-data
 EOF
 
     # Nginx server configuration
@@ -499,6 +518,12 @@ EOF
     cat > "$dir/Dockerfile" <<'EOF'
 FROM php:8.3-apache
 
+# Match www-data's UID/GID to the host user, so files created by Apache
+# inside the container are owned by you on the host, not by an unmapped UID.
+RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
+    find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
+    find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
+
 # Install system libraries required by PHP extensions
 RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
@@ -552,7 +577,13 @@ RUN { \
         echo "memory_limit = 256M"; \
         echo "sendmail_path = /usr/local/bin/mhsendmail --smtp-addr mailhog:1025"; \
     } > /usr/local/etc/php/conf.d/wordpress.ini \
-    && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
+    && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
+    && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
+
+EXPOSE 8080
+
+# Run Apache as www-data so files created inside the container are owned by the host user
+USER www-data
 EOF
 
     cat > "$dir/docker-compose.yml" <<EOF
@@ -576,7 +607,7 @@ services:
       - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
       - "traefik.http.routers.${slug}.entrypoints=websecure"
       - "traefik.http.routers.${slug}.tls=true"
-      - "traefik.http.services.${slug}.loadbalancer.server.port=80"
+      - "traefik.http.services.${slug}.loadbalancer.server.port=8080"
     networks:
       - proxy
       - internal
@@ -724,6 +755,12 @@ EOF
     cat > "$dir/Dockerfile" <<'EOF'
 FROM php:8.3-fpm
 
+# Match www-data's UID/GID to the host user, so files created by PHP-FPM
+# inside the container are owned by you on the host, not by an unmapped UID.
+RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
+    find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
+    find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
+
 # Install system libraries required by PHP extensions
 RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
@@ -775,6 +812,8 @@ RUN { \
         echo "memory_limit = 256M"; \
         echo "sendmail_path = /usr/local/bin/mhsendmail --smtp-addr mailhog:1025"; \
     } > /usr/local/etc/php/conf.d/wordpress.ini
+
+USER www-data
 EOF
 
     # Nginx configuration for WordPress
