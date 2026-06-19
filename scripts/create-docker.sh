@@ -307,6 +307,53 @@ EOF
 EOF
 }
 
+# ─── Vite container ──────────────────────────────────────────────────────────
+
+create_vite() {
+    local slug="$1"
+    local dir="$DEV_DIR/$slug"
+
+    mkdir -p "$dir/nginx"
+
+    cat > "$dir/nginx/nginx.conf" <<'NGINX_EOF'
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://host.docker.internal:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+NGINX_EOF
+
+    cat > "$dir/docker-compose.yml" <<EOF
+services:
+  web:
+    image: nginx:alpine
+    container_name: ${slug}-web
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
+      - "traefik.http.routers.${slug}.entrypoints=websecure"
+      - "traefik.http.routers.${slug}.tls=true"
+      - "traefik.http.services.${slug}.loadbalancer.server.port=80"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+EOF
+}
+
 # ─── PHP / Apache container ───────────────────────────────────────────────────
 # Single container: php:8.3-apache with mod_rewrite and DB extensions.
 
@@ -1033,6 +1080,23 @@ main() {
         esac
     done
 
+    # ── HTML project subtype ───────────────────────────────────────────────────
+    html_type="static"  # default
+    if [ "$container_type" = "html" ]; then
+        echo ""
+        echo -e "  ${BOLD}Project type:${RESET}"
+        PS3="  > "
+        select choice in \
+            "Plain HTML/CSS    — static files in src/" \
+            "Vite               — dev server proxy (React, Vue, Pandora, etc)"; do
+            case $REPLY in
+                1) html_type="static"; break ;;
+                2) html_type="vite";   break ;;
+                *) warn "Please enter 1 or 2." ;;
+            esac
+        done
+    fi
+
     # ── Web server (PHP and WordPress only) ───────────────────────────────────
     server_type="nginx"  # HTML always uses nginx; this default covers it
     if [ "$container_type" != "html" ]; then
@@ -1055,7 +1119,9 @@ main() {
     echo "  ─────────────────────────────────────"
     echo "  Project:   $slug"
     echo "  Type:      $container_type"
-    if [ "$container_type" != "html" ]; then
+    if [ "$container_type" = "html" ]; then
+        echo "  Subtype:   $html_type"
+    elif [ "$container_type" != "html" ]; then
         echo "  Server:    $server_type"
     fi
     echo "  Location:  $DEV_DIR/$slug"
@@ -1075,12 +1141,13 @@ main() {
 
     # ── Generate project files ────────────────────────────────────────────────
     info "Creating project at $DEV_DIR/$slug..."
-    case "${container_type}/${server_type}" in
-        html/*)           create_html             "$slug" ;;
-        php/apache)       create_php_apache       "$slug" ;;
-        php/nginx)        create_php_nginx        "$slug" ;;
-        wordpress/apache) create_wordpress_apache "$slug" ;;
-        wordpress/nginx)  create_wordpress_nginx  "$slug" ;;
+    case "${container_type}/${html_type:-}/${server_type}" in
+        html/static/*)    create_html             "$slug" ;;
+        html/vite/*)      create_vite             "$slug" ;;
+        php/*/apache)     create_php_apache       "$slug" ;;
+        php/*/nginx)      create_php_nginx        "$slug" ;;
+        wordpress/*/apache) create_wordpress_apache "$slug" ;;
+        wordpress/*/nginx)  create_wordpress_nginx  "$slug" ;;
     esac
     success "Project files created."
 
@@ -1114,6 +1181,18 @@ main() {
     echo -e "  ${GREEN}${BOLD}Ready!${RESET}"
     echo ""
     echo -e "  Site:     ${BOLD}https://${slug}.test${RESET}"
+    if [ "$container_type" = "html" ] && [ "$html_type" = "vite" ]; then
+        echo ""
+        echo -e "  ${BOLD}Next steps:${RESET}"
+        echo "  1. Clone your project into $DEV_DIR/$slug/"
+        echo "  2. Run: cd $DEV_DIR/$slug && pnpm install"
+        echo "  3. Run: pnpm dev"
+        echo "  4. Open https://${slug}.test in your browser"
+    elif [ "$container_type" = "html" ] && [ "$html_type" = "static" ]; then
+        echo ""
+        echo -e "  ${BOLD}Next steps:${RESET}"
+        echo "  Add your files to $DEV_DIR/$slug/src/"
+    fi
     if [ "$container_type" = "wordpress" ]; then
         echo -e "  DB admin: ${BOLD}https://${slug}-db.test${RESET}"
         echo -e "  Mail:     ${BOLD}https://${slug}-mail.test${RESET}"
