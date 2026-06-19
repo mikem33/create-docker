@@ -4,11 +4,12 @@ A Bash script that spins up local web development environments with a single com
 
 ## Features
 
-- **Three ready-to-use environments**: HTML (Nginx), PHP 8.3 (Apache), and WordPress (PHP + MySQL + phpMyAdmin + MailHog)
+- **Four ready-to-use environments**: HTML (Nginx), PHP 8.3 (Apache/Nginx), Vite (dev server), and WordPress (PHP + MySQL + phpMyAdmin + MailHog)
 - **Automatic HTTPS** with trusted local certificates via [mkcert](https://github.com/FiloSottile/mkcert)
 - **Custom `.test` domains** — access your project at `https://my-project.test`
 - **Multiple projects simultaneously** — a shared Traefik reverse proxy routes traffic by hostname
 - **Secure by default** — database passwords are auto-generated, never hardcoded
+- **Smart user mapping** — container UID/GID match your host user for seamless file permissions
 
 ## Requirements
 
@@ -122,6 +123,21 @@ The script will:
 | Web root | `~/Dev/{slug}/src/` |
 
 A starter `index.html` is created in `src/`. Drop your files there.
+
+### Vite — modern frontend development
+
+| Detail | Value |
+|---|---|
+| Image | Node.js with Vite and your framework of choice |
+| Site URL | `https://{slug}.test` |
+| Dev server | Running inside Docker with HMR via Traefik proxy |
+| Web root | `~/Dev/{slug}/src/` |
+
+The Vite dev server runs inside Docker and is proxied through Traefik, enabling:
+- Hot Module Replacement (HMR) across the HTTPS proxy
+- Consistent environment between dev and CI/CD
+- Support for React, Vue, Svelte, and other frameworks
+- Auto-generated `vite.config.js` configured for the Docker environment
 
 ### PHP 8.3
 
