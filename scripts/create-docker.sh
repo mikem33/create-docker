@@ -341,7 +341,8 @@ services:
     working_dir: /app
     volumes:
       - ./src:/app
-    command: sh -c "corepack enable && pnpm install && pnpm dev"
+      - pnpm_store:/pnpm/store
+    command: sh -c "corepack enable && pnpm install --store-dir /pnpm/store && pnpm dev"
     restart: unless-stopped
     networks:
       - internal
@@ -369,6 +370,9 @@ networks:
     external: true
   internal:
     driver: bridge
+
+volumes:
+  pnpm_store:
 EOF
 }
 

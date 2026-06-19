@@ -148,6 +148,13 @@ main() {
     fi
 
     # ── 2. Remove project folder ──────────────────────────────────────────────
+    # Vite containers create root-owned files inside src/ — clean with Docker first
+    if [ -d "$project_dir/src/node_modules" ] || [ -d "$project_dir/src/.pnpm-store" ]; then
+        info "Removing root-owned files in src/ (requires Docker)..."
+        docker run --rm -v "$project_dir/src:/app" node:lts-alpine sh -c "rm -rf /app/node_modules /app/.pnpm-store" 2>/dev/null || true
+        success "Root-owned files removed."
+    fi
+
     # cd away first so the shell is not left inside a deleted directory
     cd "$DEV_DIR"
     info "Removing project folder..."
