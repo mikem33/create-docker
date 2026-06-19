@@ -313,7 +313,7 @@ create_vite() {
     local slug="$1"
     local dir="$DEV_DIR/$slug"
 
-    mkdir -p "$dir/nginx"
+    mkdir -p "$dir/nginx" "$dir/src"
 
     cat > "$dir/nginx/nginx.conf" <<'NGINX_EOF'
 server {
@@ -1184,8 +1184,8 @@ main() {
     if [ "$container_type" = "html" ] && [ "$html_type" = "vite" ]; then
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"
-        echo "  1. Clone your project into $DEV_DIR/$slug/"
-        echo "  2. Run: cd $DEV_DIR/$slug && pnpm install"
+        echo "  1. Clone your project into $DEV_DIR/$slug/src/"
+        echo "  2. Run: cd $DEV_DIR/$slug/src && pnpm install"
         echo "  3. Run: pnpm dev"
         echo "  4. Open https://${slug}.test in your browser"
     elif [ "$container_type" = "html" ] && [ "$html_type" = "static" ]; then
