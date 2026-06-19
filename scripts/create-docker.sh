@@ -308,6 +308,8 @@ EOF
 }
 
 # ─── Vite container ──────────────────────────────────────────────────────────
+# Two services: node container runs Vite dev server, nginx proxies to it.
+# Both share an internal network; nginx also connects to Traefik's proxy network.
 
 create_vite() {
     local slug="$1"
@@ -321,7 +323,7 @@ server {
     server_name _;
 
     location / {
-        proxy_pass http://172.17.0.1:5173;
+        proxy_pass http://vite:5173;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header Upgrade $http_upgrade;
@@ -333,10 +335,23 @@ NGINX_EOF
 
     cat > "$dir/docker-compose.yml" <<EOF
 services:
+  vite:
+    image: node:lts-alpine
+    container_name: ${slug}-vite
+    working_dir: /app
+    volumes:
+      - ./src:/app
+    command: sh -c "corepack enable && pnpm install && pnpm dev"
+    restart: unless-stopped
+    networks:
+      - internal
+
   web:
     image: nginx:alpine
     container_name: ${slug}-web
     restart: unless-stopped
+    depends_on:
+      - vite
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     labels:
@@ -347,10 +362,13 @@ services:
       - "traefik.http.services.${slug}.loadbalancer.server.port=80"
     networks:
       - proxy
+      - internal
 
 networks:
   proxy:
     external: true
+  internal:
+    driver: bridge
 EOF
 }
 
@@ -1185,9 +1203,10 @@ main() {
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"
         echo "  1. Clone your project into $DEV_DIR/$slug/src/"
-        echo "  2. Run: cd $DEV_DIR/$slug/src && pnpm install"
-        echo "  3. Run: pnpm dev"
-        echo "  4. Open https://${slug}.test in your browser"
+        echo "  2. Vite dev server starts automatically with docker compose"
+        echo "  3. Open https://${slug}.test in your browser"
+        echo ""
+        echo -e "  Container logs: ${BOLD}docker compose -f $DEV_DIR/$slug/docker-compose.yml logs -f${RESET}"
     elif [ "$container_type" = "html" ] && [ "$html_type" = "static" ]; then
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"
