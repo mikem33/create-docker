@@ -321,7 +321,7 @@ server {
     server_name _;
 
     location / {
-        proxy_pass http://host.docker.internal:5173;
+        proxy_pass http://172.17.0.1:5173;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header Upgrade $http_upgrade;
