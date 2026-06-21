@@ -342,6 +342,8 @@ services:
     volumes:
       - ./src:/app
       - pnpm_store:/pnpm/store
+    environment:
+      - CI=true
     command: sh -c "corepack enable && pnpm install --store-dir /pnpm/store && pnpm dev"
     restart: unless-stopped
     networks:
