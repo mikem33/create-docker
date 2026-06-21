@@ -35,6 +35,71 @@ https://{slug}.test
 
 ---
 
+## Vite — modern frontend development
+
+### What it creates
+
+```
+~/Dev/{slug}/
+├── docker-compose.yml
+├── nginx/
+│   └── nginx.conf      ← proxies Vite dev server, handles HMR WebSocket
+└── src/                ← clone your project here
+```
+
+No starter files are created in `src/` — the expectation is that you clone an existing project (React, Vue, Svelte, Pandora, etc.) into that folder.
+
+### Services
+
+| Service | Image | Role |
+|---|---|---|
+| `vite` | `node:lts-alpine` | Runs `pnpm install` then `pnpm dev` |
+| `web` | `nginx:alpine` | Proxies HTTP and WebSocket traffic to `vite:5173` |
+
+Only `web` connects to the `proxy` network (Traefik). The `vite` container lives on the `internal` network and is not directly exposed.
+
+### How it works
+
+On container start, the `vite` service runs:
+
+```bash
+corepack enable && pnpm install --store-dir /pnpm/store && pnpm dev
+```
+
+Nginx then proxies all traffic — including WebSocket connections for Hot Module Replacement — to `vite:5173`:
+
+```
+Browser → Traefik (HTTPS) → nginx:80 → vite:5173
+```
+
+The WebSocket upgrade headers are forwarded correctly so HMR works through the HTTPS proxy without any extra Vite configuration.
+
+### pnpm cache
+
+The pnpm package store is mounted as a named Docker volume (`pnpm_store`) shared across container restarts. Packages are only downloaded once — subsequent starts reuse the cached store. The volume is removed when `delete-docker` is run.
+
+### Non-interactive pnpm
+
+`CI=true` is set in the container environment. This prevents pnpm from prompting to confirm purging `node_modules` when it detects a lockfile or settings change — which would otherwise hang the container indefinitely with no TTY to respond to.
+
+### First-run workflow
+
+1. Create the project: `create-docker my-project` → select **HTML → Vite**
+2. Clone your frontend project into `src/`:
+   ```bash
+   git clone https://github.com/you/your-repo.git ~/Dev/my-project/src
+   ```
+3. The containers start automatically (or run `start-docker my-project`)
+4. Open `https://my-project.test` — Vite serves the dev build with HMR
+
+### Accessing the site
+
+```
+https://{slug}.test
+```
+
+---
+
 ## PHP 8.3
 
 When selecting the PHP container type, you are asked to choose a web server:

@@ -120,7 +120,24 @@ Each WordPress project uses **two Docker networks**:
 
 **`internal`** is a per-project bridge network. The database container only joins `internal` — it is never reachable from the `proxy` network or from other projects. This means the MySQL port is not exposed on your host machine and is not accessible by Traefik or by any container from another project.
 
-HTML and PHP projects use only the `proxy` network since they have no database.
+**Vite projects** also use two networks. The `vite` container (Node.js) sits on `internal` only; the `web` container (Nginx) bridges both networks and proxies traffic from Traefik to the Vite dev server:
+
+```
+┌─────────────────────────────────┐
+│  proxy  (external, shared)      │
+│                                 │
+│  traefik ◄──── web              │
+│                │                │
+└────────────────│────────────────┘
+                 │
+┌────────────────▼────────────────┐
+│  internal  (project-scoped)     │
+│                                 │
+│  web ◄───── vite                │
+└─────────────────────────────────┘
+```
+
+HTML and PHP projects use only the `proxy` network since they have no internal services.
 
 ## /etc/hosts
 
@@ -235,6 +252,12 @@ $CREATE_DOCKER_DIR/   # ~/Dev/ by default
 ├── my-html-project/
 │   ├── docker-compose.yml
 │   └── src/                    # Web root
+│
+├── my-vite-project/
+│   ├── docker-compose.yml
+│   ├── nginx/
+│   │   └── nginx.conf
+│   └── src/                    # Clone your frontend project here
 │
 ├── my-php-project/
 │   ├── docker-compose.yml
