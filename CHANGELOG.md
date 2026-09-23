@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner project deletion (cache removed with named volume)
 
 ### Fixed
+- **`wp db` commands unusable** — WP-CLI shells out to the MySQL client, which the WordPress
+  images did not carry, so `wp db export`, `import`, `check` and `cli` failed on a missing
+  binary. Debian's client is MariaDB's and verifies the server certificate, which MySQL 8
+  self-signs; since WP-CLI invokes it with `--no-defaults`, no config file can opt out, so the
+  images add the client plus PATH shims that pass `--ssl-verify-server-cert=0`
 - **WP-CLI cache directory** — WP-CLI keeps its download cache in `$HOME/.wp-cli`, and
   `www-data`'s home is `/var/www`, owned by root. Every core or plugin fetch warned
   `Failed to create directory '/var/www/.wp-cli/cache/'` and re-downloaded from scratch. The

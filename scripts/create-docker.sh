@@ -615,7 +615,9 @@ RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
     find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
     find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
 
-# Install system libraries required by PHP extensions
+# Install system libraries required by PHP extensions, plus the MySQL client.
+# WP-CLI shells out to mysql/mysqldump for the `wp db` family — export, import,
+# check, cli — so without the client those commands fail at the point of use.
 RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
         libjpeg62-turbo-dev \
@@ -627,6 +629,7 @@ RUN apt-get update && apt-get install -y \
         libssl-dev \
         libmagickwand-dev \
         libonig-dev \
+        default-mysql-client \
         --no-install-recommends \
     && docker-php-ext-configure gd \
         --with-freetype \
@@ -665,6 +668,18 @@ RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cl
     && chmod +x /usr/local/bin/wp \
     && mkdir -p /var/www/.wp-cli/cache \
     && chown -R www-data:www-data /var/www/.wp-cli
+
+# Debian's default-mysql-client is MariaDB's, whose client verifies the server
+# certificate by default. MySQL 8 presents a self-signed one, so every `wp db`
+# command dies with "TLS/SSL error: self-signed certificate in certificate
+# chain". WP-CLI runs the client with --no-defaults, so no config file can carry
+# the opt-out — these shims sit ahead of /usr/bin on PATH and append it. The
+# connection is between two containers on a private network on your own machine.
+RUN for b in mariadb mariadb-dump mariadb-check mysql mysqldump mysqlcheck; do \
+        printf '#!/bin/sh\nexec /usr/bin/%s "$@" --ssl-verify-server-cert=0\n' "$b" \
+            > /usr/local/bin/"$b" \
+        && chmod +x /usr/local/bin/"$b"; \
+    done
 
 # PHP settings tuned for WordPress development
 RUN { \
@@ -859,7 +874,9 @@ RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
     find / -path /proc -prune -o -user 33 -exec chown -h www-data {} \; && \
     find / -path /proc -prune -o -group 33 -exec chgrp -h www-data {} \;
 
-# Install system libraries required by PHP extensions
+# Install system libraries required by PHP extensions, plus the MySQL client.
+# WP-CLI shells out to mysql/mysqldump for the `wp db` family — export, import,
+# check, cli — so without the client those commands fail at the point of use.
 RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
         libjpeg62-turbo-dev \
@@ -871,6 +888,7 @@ RUN apt-get update && apt-get install -y \
         libssl-dev \
         libmagickwand-dev \
         libonig-dev \
+        default-mysql-client \
         --no-install-recommends \
     && docker-php-ext-configure gd \
         --with-freetype \
@@ -907,6 +925,18 @@ RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cl
     && chmod +x /usr/local/bin/wp \
     && mkdir -p /var/www/.wp-cli/cache \
     && chown -R www-data:www-data /var/www/.wp-cli
+
+# Debian's default-mysql-client is MariaDB's, whose client verifies the server
+# certificate by default. MySQL 8 presents a self-signed one, so every `wp db`
+# command dies with "TLS/SSL error: self-signed certificate in certificate
+# chain". WP-CLI runs the client with --no-defaults, so no config file can carry
+# the opt-out — these shims sit ahead of /usr/bin on PATH and append it. The
+# connection is between two containers on a private network on your own machine.
+RUN for b in mariadb mariadb-dump mariadb-check mysql mysqldump mysqlcheck; do \
+        printf '#!/bin/sh\nexec /usr/bin/%s "$@" --ssl-verify-server-cert=0\n' "$b" \
+            > /usr/local/bin/"$b" \
+        && chmod +x /usr/local/bin/"$b"; \
+    done
 
 # PHP settings tuned for WordPress development
 RUN { \
