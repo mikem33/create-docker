@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner project deletion (cache removed with named volume)
 
 ### Fixed
+- **MySQL user name length** — A project slug long enough to push `{slug}_user` past MySQL's
+  32-character cap made the image's entrypoint abort on `CREATE USER`. The container then
+  restarted onto an already initialized data directory and reported healthy with no application
+  user, surfacing only as `dependency failed to start: container {slug}-db is unhealthy`.
+  Long names now shed trailing words until they fit
 - Docker gateway IP detection — Uses Docker gateway instead of desktop URL for better compatibility
 - Host entry matching — Fixed hostname resolution for `.test` domains
 - Project folder creation — Ensured `src` folder is properly created for Vite projects

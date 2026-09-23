@@ -314,6 +314,8 @@ MYSQL_ROOT_PASSWORD=z9y8x7w6v5u4t3s2r1q0p9o8
 
 The database host inside Docker is always `db` — the name of the MySQL service — not `localhost`.
 
+Both names derive from the project slug with hyphens turned into underscores. MySQL caps user names at 32 characters, so for a long slug the generator drops trailing words until the name fits — `pandora-wordpress-theme-test` yields the user `pandora_wordpress_theme_user` alongside the database `pandora_wordpress_theme_test_db`. Always read the actual values from `.env` rather than assuming `{slug}_user`.
+
 ---
 
 ## Installing WordPress (standard)

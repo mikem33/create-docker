@@ -224,6 +224,26 @@ gen_password() {
     openssl rand -hex 12
 }
 
+# ─── MySQL identifier names ──────────────────────────────────────────────────
+# MySQL caps user names at 32 characters and rejects hyphens in unquoted
+# identifiers. A slug long enough to overflow that cap makes the image's
+# entrypoint abort on CREATE USER; the container then restarts onto an already
+# initialized data dir and reports healthy without the app user ever existing.
+# So the name is shortened here, a trailing word at a time, until it fits.
+
+db_identifier() {
+    # $1 = project slug, $2 = suffix (db|user), $3 = max length
+    local base="${1//-/_}" suffix="$2" max="$3"
+    local keep=$(( max - ${#suffix} - 1 ))
+    # shed whole words from the end first, so the name stays readable
+    while (( ${#base} > keep )) && [[ "$base" == *_* ]]; do
+        base="${base%_*}"
+    done
+    # a single word longer than the budget still has to be cut
+    (( ${#base} > keep )) && base="${base:0:$keep}"
+    echo "${base}_${suffix}"
+}
+
 # ─── Per-project TLS certificate ────────────────────────────────────────────
 # Generates a cert with the project's exact hostnames as SANs.
 # Wildcard certs (*.test) are rejected by TLS stacks for 2-label domains.
@@ -556,9 +576,9 @@ create_wordpress_apache() {
     local slug="$1"
     local dir="$DEV_DIR/$slug"
 
-    # MySQL identifiers cannot contain hyphens — replace with underscores
-    local db_name="${slug//-/_}_db"
-    local db_user="${slug//-/_}_user"
+    local db_name db_user
+    db_name=$(db_identifier "$slug" db 64)
+    db_user=$(db_identifier "$slug" user 32)
     local db_password
     local db_root_password
     db_password=$(gen_password)
@@ -797,8 +817,9 @@ create_wordpress_nginx() {
     local slug="$1"
     local dir="$DEV_DIR/$slug"
 
-    local db_name="${slug//-/_}_db"
-    local db_user="${slug//-/_}_user"
+    local db_name db_user
+    db_name=$(db_identifier "$slug" db 64)
+    db_user=$(db_identifier "$slug" user 32)
     local db_password
     local db_root_password
     db_password=$(gen_password)
