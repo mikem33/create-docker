@@ -425,6 +425,16 @@ RUN docker-php-ext-install pdo pdo_mysql mysqli \
 RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
     && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
 
+# Traefik terminates TLS and forwards plain HTTP here, so PHP sees no HTTPS and
+# builds http:// URLs for a site served over https://. WordPress turns that into
+# a redirect loop on /wp-admin/: it thinks the request is insecure and bounces to
+# the https siteurl, which arrives looking insecure again. Translate Traefik's
+# X-Forwarded-Proto into the flag PHP actually reads. Trusting the header is safe
+# because the container is not published — Traefik is the only way in.
+RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
+        > /etc/apache2/conf-available/forwarded-proto.conf \
+    && a2enconf forwarded-proto
+
 EXPOSE 8080
 
 USER www-data
@@ -491,6 +501,13 @@ EOF
     # Nginx server configuration
     # $uri, $query_string, etc. are Nginx variables — not bash variables
     cat > "$dir/nginx/nginx.conf" <<'NGINX_EOF'
+# Traefik reports the browser's original scheme here. This file is included
+# inside http{}, which is the only level where map is allowed.
+map $http_x_forwarded_proto $https_from_proxy {
+    default '';
+    https   on;
+}
+
 server {
     listen 80;
     root  /var/www/html;
@@ -508,6 +525,11 @@ server {
         include       fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_param PATH_INFO       $fastcgi_path_info;
+
+        # Traefik terminates TLS and forwards plain HTTP, so PHP would otherwise
+        # build http:// URLs for a site served over https:// — which WordPress
+        # turns into a redirect loop on /wp-admin/. Pass the original scheme on.
+        fastcgi_param HTTPS $https_from_proxy if_not_empty;
     }
 
     # Deny access to hidden files (.htaccess, .env, etc.)
@@ -691,6 +713,16 @@ RUN { \
     } > /usr/local/etc/php/conf.d/wordpress.ini \
     && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
     && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
+
+# Traefik terminates TLS and forwards plain HTTP here, so PHP sees no HTTPS and
+# builds http:// URLs for a site served over https://. WordPress turns that into
+# a redirect loop on /wp-admin/: it thinks the request is insecure and bounces to
+# the https siteurl, which arrives looking insecure again. Translate Traefik's
+# X-Forwarded-Proto into the flag PHP actually reads. Trusting the header is safe
+# because the container is not published — Traefik is the only way in.
+RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
+        > /etc/apache2/conf-available/forwarded-proto.conf \
+    && a2enconf forwarded-proto
 
 EXPOSE 8080
 
@@ -953,6 +985,13 @@ EOF
     # Nginx configuration for WordPress
     # $uri, $args, etc. are Nginx variables — not bash variables
     cat > "$dir/nginx/nginx.conf" <<'NGINX_EOF'
+# Traefik reports the browser's original scheme here. This file is included
+# inside http{}, which is the only level where map is allowed.
+map $http_x_forwarded_proto $https_from_proxy {
+    default '';
+    https   on;
+}
+
 server {
     listen 80;
     root  /var/www/html;
@@ -970,6 +1009,11 @@ server {
         include       fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_param PATH_INFO       $fastcgi_path_info;
+
+        # Traefik terminates TLS and forwards plain HTTP, so PHP would otherwise
+        # build http:// URLs for a site served over https:// — which WordPress
+        # turns into a redirect loop on /wp-admin/. Pass the original scheme on.
+        fastcgi_param HTTPS $https_from_proxy if_not_empty;
     }
 
     # Deny access to hidden files and sensitive WordPress paths

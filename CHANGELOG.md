@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner project deletion (cache removed with named volume)
 
 ### Fixed
+- **Redirect loop on `/wp-admin/`** — Traefik terminates TLS and forwards plain HTTP, so PHP saw
+  no `HTTPS` and WordPress judged the request insecure. With `siteurl` on `https://` it redirected
+  to itself indefinitely (`NS_ERROR_REDIRECT_LOOP`). The PHP images now translate Traefik's
+  `X-Forwarded-Proto` into `HTTPS=on` — via `SetEnvIf` on Apache, a `fastcgi_param` on Nginx —
+  so PHP sees the browser's original scheme
 - **`wp db` commands unusable** — WP-CLI shells out to the MySQL client, which the WordPress
   images did not carry, so `wp db export`, `import`, `check` and `cli` failed on a missing
   binary. Debian's client is MariaDB's and verifies the server certificate, which MySQL 8
