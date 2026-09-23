@@ -15,8 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - No need to manage Node.js locally — everything runs in containers
 
 - **WP-CLI support** — WordPress containers now include WP-CLI for command-line WordPress management
-  - Run WP commands inside the container: `docker compose exec wp wp post list`
-  - Useful for scripting WordPress operations and bulk updates
+  - A `wp` wrapper on the host PATH runs it in the right container, so `wp plugin list` works
+    from a project directory as if WordPress were installed locally
+  - Finds the project by walking up from the working directory and mirrors your location, so
+    running it under `src/` puts WP-CLI in the matching directory inside the container
+  - `docker exec {slug}-web wp ...` (or `{slug}-php` on the Nginx variant) still works directly
 
 - **PHPMyAdmin upload limit configuration** — Added `UPLOAD_LIMIT` parameter for phpMyAdmin
   - Configurable database dump file size limits
@@ -57,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `delete-docker.sh` — Remove projects completely
   - `start-docker.sh` — Start stopped projects
   - `stop-docker.sh` — Stop running projects without deletion
+  - `wp.sh` — Run WP-CLI against the enclosing project (symlink as `wp`)
 
 ### Documentation
 - Updated feature list to include Vite container type

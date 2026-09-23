@@ -411,38 +411,68 @@ docker stop $(docker ps -q)
 
 ## WP-CLI
 
-WP-CLI is installed in both WordPress container variants and available as `wp` inside the container. Run commands with `docker exec`:
+WP-CLI ships in both WordPress variants. The `wp` wrapper on your PATH (see
+[Installation](../README.md#installation)) runs it inside the right container, so you use it
+exactly like a local install:
 
 ```bash
-# Check WP-CLI and PHP version
-docker exec {slug}-web wp --info --allow-root
+cd ~/Dev/{slug}/src
 
-# Download WordPress core into src/
-docker exec {slug}-web wp core download --allow-root
+wp core download
 
-# Install WordPress (after core download)
-docker exec {slug}-web wp core install \
+# Read the credentials from the project's .env — the database name and user are
+# derived from the slug and the user may have been shortened to fit MySQL's limit
+wp config create \
+  --dbname="$(grep ^MYSQL_DATABASE ../.env | cut -d= -f2)" \
+  --dbuser="$(grep ^MYSQL_USER ../.env | cut -d= -f2)" \
+  --dbpass="$(grep ^MYSQL_PASSWORD ../.env | cut -d= -f2)" \
+  --dbhost=db
+
+wp core install \
   --url=https://{slug}.test \
   --title="My Site" \
   --admin_user=admin \
   --admin_password=secret \
-  --admin_email=admin@example.com \
-  --allow-root
+  --admin_email=admin@example.com
 
-# Install a plugin
-docker exec {slug}-web wp plugin install woocommerce --activate --allow-root
-
-# Update all plugins
-docker exec {slug}-web wp plugin update --all --allow-root
-
-# Export the database
-docker exec {slug}-web wp db export /var/www/html/backup.sql --allow-root
+wp plugin install woocommerce --activate
+wp plugin update --all
+wp db export backup.sql
 ```
 
-> `--allow-root` is required because the process runs as `root` inside the container.
+> **`--dbhost=db` is not optional.** `wp config create` defaults to `localhost`, which inside the
+> container means the container itself, not MySQL. Omitting it produces `Error establishing a
+> database connection ... at 'localhost'` on the next command. Fix an existing config with
+> `wp config set DB_HOST db`.
 
-For Nginx + FPM projects the PHP container is named `{slug}-php` (not `{slug}-web`):
+The wrapper finds the project by walking up from the working directory, so it works from
+anywhere inside it, and picks the container holding PHP on its own — `{slug}-php` on the Nginx
+variant, `{slug}-web` on the Apache one.
+
+It also mirrors your location. `src/` is mounted at `/var/www/html`, so running WP-CLI from
+`src/wp-content/themes/my-theme` starts it in `/var/www/html/wp-content/themes/my-theme` and
+relative paths mean what they look like. From outside `src/` it falls back to the WordPress root
+and says so.
+
+Standard input and pipes pass through, so redirects and filters behave:
 
 ```bash
-docker exec {slug}-php wp --info --allow-root
+wp db import dump.sql
+wp post list --format=csv | tail -n +2
 ```
+
+`--allow-root` is not needed: the container runs as `www-data`, whose UID is mapped to yours on
+the host. That mapping is also why files WP-CLI creates — `wp-config.php`, downloaded core,
+plugins — come out owned by you and stay editable without `sudo`.
+
+### Without the wrapper
+
+`docker exec` works too, if you would rather not install it:
+
+```bash
+docker exec {slug}-web wp core download          # Apache variant
+docker exec {slug}-php wp core download          # Nginx + FPM variant
+```
+
+Add `-w /var/www/html/wp-content/themes/my-theme` to choose the directory, and `-it` for
+commands that prompt.

@@ -32,13 +32,19 @@ chmod +x ~/Dev/create-docker/scripts/create-docker.sh
 chmod +x ~/Dev/create-docker/scripts/delete-docker.sh
 chmod +x ~/Dev/create-docker/scripts/start-docker.sh
 chmod +x ~/Dev/create-docker/scripts/stop-docker.sh
+chmod +x ~/Dev/create-docker/scripts/wp.sh
 
 # Add to PATH (assuming ~/.local/bin is in your PATH)
 ln -s ~/Dev/create-docker/scripts/create-docker.sh ~/.local/bin/create-docker
 ln -s ~/Dev/create-docker/scripts/delete-docker.sh ~/.local/bin/delete-docker
 ln -s ~/Dev/create-docker/scripts/start-docker.sh ~/.local/bin/start-docker
 ln -s ~/Dev/create-docker/scripts/stop-docker.sh ~/.local/bin/stop-docker
+
+# Optional: run WP-CLI from the host as if WordPress were installed locally
+ln -s ~/Dev/create-docker/scripts/wp.sh ~/.local/bin/wp
 ```
+
+> **Note:** skip the last symlink if you already have a `wp` on your PATH — it would shadow it.
 
 > **Note:** If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
 
