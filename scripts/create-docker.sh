@@ -655,10 +655,16 @@ RUN curl -sL \
         -o /usr/local/bin/mhsendmail \
     && chmod +x /usr/local/bin/mhsendmail
 
-# Install WP-CLI — manage WordPress from the command line inside the container
+# Install WP-CLI — manage WordPress from the command line inside the container.
+# www-data's home is /var/www, owned by root, so WP-CLI cannot create the
+# download cache it keeps in $HOME/.wp-cli — every core/plugin fetch would warn
+# and re-download. The directory is created up front and handed to www-data; it
+# sits beside html/, so the ./src bind mount does not shadow it.
 RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
         -o /usr/local/bin/wp \
-    && chmod +x /usr/local/bin/wp
+    && chmod +x /usr/local/bin/wp \
+    && mkdir -p /var/www/.wp-cli/cache \
+    && chown -R www-data:www-data /var/www/.wp-cli
 
 # PHP settings tuned for WordPress development
 RUN { \
@@ -891,10 +897,16 @@ RUN curl -sL \
         -o /usr/local/bin/mhsendmail \
     && chmod +x /usr/local/bin/mhsendmail
 
-# Install WP-CLI — manage WordPress from the command line inside the container
+# Install WP-CLI — manage WordPress from the command line inside the container.
+# www-data's home is /var/www, owned by root, so WP-CLI cannot create the
+# download cache it keeps in $HOME/.wp-cli — every core/plugin fetch would warn
+# and re-download. The directory is created up front and handed to www-data; it
+# sits beside html/, so the ./src bind mount does not shadow it.
 RUN curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
         -o /usr/local/bin/wp \
-    && chmod +x /usr/local/bin/wp
+    && chmod +x /usr/local/bin/wp \
+    && mkdir -p /var/www/.wp-cli/cache \
+    && chown -R www-data:www-data /var/www/.wp-cli
 
 # PHP settings tuned for WordPress development
 RUN { \

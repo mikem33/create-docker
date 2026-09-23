@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner project deletion (cache removed with named volume)
 
 ### Fixed
+- **WP-CLI cache directory** — WP-CLI keeps its download cache in `$HOME/.wp-cli`, and
+  `www-data`'s home is `/var/www`, owned by root. Every core or plugin fetch warned
+  `Failed to create directory '/var/www/.wp-cli/cache/'` and re-downloaded from scratch. The
+  image now creates the directory owned by `www-data`
 - **MySQL user name length** — A project slug long enough to push `{slug}_user` past MySQL's
   32-character cap made the image's entrypoint abort on `CREATE USER`. The container then
   restarted onto an already initialized data directory and reported healthy with no application
