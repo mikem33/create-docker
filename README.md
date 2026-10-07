@@ -10,6 +10,7 @@ A Bash script that spins up local web development environments with a single com
 - **Multiple projects simultaneously** — a shared Traefik reverse proxy routes traffic by hostname
 - **Secure by default** — database passwords are auto-generated, never hardcoded
 - **Smart user mapping** — container UID/GID match your host user for seamless file permissions
+- **Optional Composer** — PHP and WordPress containers can include Composer 2, no PHP needed on the host
 
 ## Requirements
 
@@ -33,6 +34,7 @@ chmod +x ~/Dev/create-docker/scripts/delete-docker.sh
 chmod +x ~/Dev/create-docker/scripts/start-docker.sh
 chmod +x ~/Dev/create-docker/scripts/stop-docker.sh
 chmod +x ~/Dev/create-docker/scripts/wp.sh
+chmod +x ~/Dev/create-docker/scripts/composer.sh
 
 # Add to PATH (assuming ~/.local/bin is in your PATH)
 ln -s ~/Dev/create-docker/scripts/create-docker.sh ~/.local/bin/create-docker
@@ -42,9 +44,12 @@ ln -s ~/Dev/create-docker/scripts/stop-docker.sh ~/.local/bin/stop-docker
 
 # Optional: run WP-CLI from the host as if WordPress were installed locally
 ln -s ~/Dev/create-docker/scripts/wp.sh ~/.local/bin/wp
+
+# Optional: run Composer from the host, in projects created with Composer
+ln -s ~/Dev/create-docker/scripts/composer.sh ~/.local/bin/composer
 ```
 
-> **Note:** skip the last symlink if you already have a `wp` on your PATH — it would shadow it.
+> **Note:** skip the `wp` or `composer` symlink if you already have that command on your PATH — it would shadow it.
 
 > **Note:** If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
 
@@ -96,11 +101,14 @@ stop-docker my-project    # stops directly
   2) Nginx + PHP-FPM   — separate containers, more flexible
   > 2
 
+  Install Composer? [y/N] y
+
   Summary
   ─────────────────────────────────────
   Project:   my-project
   Type:      wordpress
   Server:    nginx
+  Composer:  yes
   Location:  /home/user/Dev/my-project
   URL:       https://my-project.test
   DB admin:  https://my-project-db.test
@@ -172,6 +180,17 @@ You choose the web server when creating the project (Apache or Nginx + FPM). Bot
 PHP extensions included: `gd`, `mysqli`, `pdo_mysql`, `mbstring`, `xml`, `zip`, `curl`, `intl`, `exif`, `opcache`, `imagick`.
 
 Outgoing PHP mail is automatically captured by MailHog — no emails leave your machine.
+
+### Composer (optional)
+
+PHP and WordPress projects can include Composer 2 in the PHP container — answer `y` to `Install Composer?` when creating the project. Nothing needs to be installed on the host. With the `composer` wrapper on your PATH, run it from anywhere in the project as if it were local:
+
+```bash
+cd ~/Dev/my-project/src
+composer require vendor/package
+```
+
+Without the wrapper, use `docker compose exec web composer …` (Apache) or `docker compose exec php composer …` (Nginx + FPM). Files Composer creates are owned by your host user. See [_docs/containers.md](_docs/containers.md#composer) for details, including how to add Composer to an existing project.
 
 ## Generated project structure
 

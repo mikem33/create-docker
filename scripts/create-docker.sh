@@ -398,6 +398,32 @@ volumes:
 EOF
 }
 
+# ─── Composer (optional, PHP and WordPress) ──────────────────────────────────
+# Appends the Composer layer to a Dockerfile being written, if the user asked
+# for it. Each PHP generator writes its Dockerfile in two parts and calls this
+# between them, ahead of USER www-data — apt needs root. Without Composer
+# nothing is appended, so the Dockerfile is byte-for-byte what it was before.
+
+append_composer_layer() {
+    [ "${install_composer:-n}" = "y" ] || return 0
+    cat >> "$1" <<'EOF'
+# Install Composer, so PHP dependencies are managed inside the container and the
+# host needs neither PHP nor Composer. The binary is copied from the official
+# image instead of fetched with the installer script, which pins Composer 2 with
+# no checksum step. Composer unpacks dist archives with unzip and clones source
+# packages with git. www-data's home is /var/www, owned by root, so Composer
+# cannot keep its cache under $HOME; COMPOSER_HOME points at a directory handed
+# to www-data instead, beside html/ so the ./src bind mount does not shadow it.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN apt-get update && apt-get install -y git unzip --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/www/.composer \
+    && chown -R www-data:www-data /var/www/.composer
+ENV COMPOSER_HOME=/var/www/.composer
+
+EOF
+}
+
 # ─── PHP / Apache container ───────────────────────────────────────────────────
 # Single container: php:8.3-apache with mod_rewrite and DB extensions.
 
@@ -435,6 +461,9 @@ RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
         > /etc/apache2/conf-available/forwarded-proto.conf \
     && a2enconf forwarded-proto
 
+EOF
+    append_composer_layer "$dir/Dockerfile"
+    cat >> "$dir/Dockerfile" <<'EOF'
 EXPOSE 8080
 
 USER www-data
@@ -495,6 +524,9 @@ RUN usermod -u 1000 www-data && groupmod -g 1000 www-data && \
 # Enable common extensions for PHP development
 RUN docker-php-ext-install pdo pdo_mysql mysqli
 
+EOF
+    append_composer_layer "$dir/Dockerfile"
+    cat >> "$dir/Dockerfile" <<'EOF'
 USER www-data
 EOF
 
@@ -724,6 +756,9 @@ RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
         > /etc/apache2/conf-available/forwarded-proto.conf \
     && a2enconf forwarded-proto
 
+EOF
+    append_composer_layer "$dir/Dockerfile"
+    cat >> "$dir/Dockerfile" <<'EOF'
 EXPOSE 8080
 
 # Run Apache as www-data so files created inside the container are owned by the host user
@@ -979,6 +1014,9 @@ RUN { \
         echo "sendmail_path = /usr/local/bin/mhsendmail --smtp-addr mailhog:1025"; \
     } > /usr/local/etc/php/conf.d/wordpress.ini
 
+EOF
+    append_composer_layer "$dir/Dockerfile"
+    cat >> "$dir/Dockerfile" <<'EOF'
 USER www-data
 EOF
 
@@ -1244,6 +1282,16 @@ main() {
         done
     fi
 
+    # ── Composer (PHP and WordPress only) ─────────────────────────────────────
+    install_composer="n"
+    if [ "$container_type" != "html" ]; then
+        echo ""
+        read -rp "  Install Composer? [y/N] " composer_answer
+        if [[ "$composer_answer" =~ ^[Yy]$ ]]; then
+            install_composer="y"
+        fi
+    fi
+
     # ── Summary ───────────────────────────────────────────────────────────────
     echo ""
     echo -e "  ${BOLD}Summary${RESET}"
@@ -1254,6 +1302,7 @@ main() {
         echo "  Subtype:   $html_type"
     elif [ "$container_type" != "html" ]; then
         echo "  Server:    $server_type"
+        echo "  Composer:  $([ "$install_composer" = "y" ] && echo yes || echo no)"
     fi
     echo "  Location:  $DEV_DIR/$slug"
     echo "  URL:       https://${slug}.test"
@@ -1331,6 +1380,10 @@ main() {
         echo ""
         echo -e "  DB credentials → ${BOLD}$DEV_DIR/$slug/.env${RESET}"
         echo -e "  DB host (inside Docker) → ${BOLD}db${RESET}"
+    fi
+    if [ "$install_composer" = "y" ]; then
+        echo ""
+        echo -e "  Composer → ${BOLD}composer ...${RESET} from the project folder (needs the composer wrapper on PATH)"
     fi
     echo "  ─────────────────────────────────────"
     echo ""

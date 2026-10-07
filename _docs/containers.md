@@ -476,3 +476,52 @@ docker exec {slug}-php wp core download          # Nginx + FPM variant
 
 Add `-w /var/www/html/wp-content/themes/my-theme` to choose the directory, and `-it` for
 commands that prompt.
+
+---
+
+## Composer
+
+PHP and WordPress projects can include Composer — `create-docker` asks `Install Composer? [y/N]`
+after the web server choice. The default is no, and without it the generated `Dockerfile` is
+exactly what it would be otherwise. Nothing on the host needs PHP or Composer.
+
+With it, the PHP image gains:
+
+- Composer 2, copied from the official `composer:2` image to `/usr/bin/composer`
+- `git` and `unzip`, which Composer uses to clone source packages and unpack dist archives
+- `COMPOSER_HOME=/var/www/.composer`, owned by `www-data`, so the cache is writable — `www-data`'s
+  home is `/var/www`, owned by root. It sits beside `html/`, so the `./src` bind mount does not
+  shadow it
+
+The `composer` wrapper on your PATH (see [Installation](../README.md#installation)) works like the
+`wp` one: it finds the project from the working directory, picks the container holding PHP, and
+mirrors your location under `src/`:
+
+```bash
+cd ~/Dev/{slug}/src/wp-content/themes/my-theme
+composer require vendor/package     # runs in /var/www/html/wp-content/themes/my-theme
+```
+
+Files Composer creates — `vendor/`, `composer.lock` — are owned by you on the host, through the
+same UID mapping as everything else.
+
+Without the wrapper:
+
+```bash
+docker compose exec web composer install    # Apache variant
+docker compose exec php composer install    # Nginx + FPM variant
+```
+
+### Adding Composer to an existing project
+
+Paste this into the project's `Dockerfile`, just before `EXPOSE 8080` (Apache) or the final
+`USER www-data` (Nginx + FPM), then rebuild with `docker compose up -d --build`:
+
+```dockerfile
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN apt-get update && apt-get install -y git unzip --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/www/.composer \
+    && chown -R www-data:www-data /var/www/.composer
+ENV COMPOSER_HOME=/var/www/.composer
+```

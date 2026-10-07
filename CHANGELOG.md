@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Optional Composer** — PHP and WordPress projects (Apache and Nginx + FPM) can include
+  Composer 2 in the PHP container; `create-docker` asks `Install Composer? [y/N]`
+  - Copied from the official `composer:2` image, with `git` and `unzip` for source and dist
+    packages; nothing needs to be installed on the host
+  - `COMPOSER_HOME` is `/var/www/.composer`, owned by `www-data`, so the cache is writable and
+    files Composer creates are owned by the host user
+  - A `composer` wrapper on the host PATH runs it in the right container and mirrors your
+    location under `src/`, like the `wp` wrapper
+  - Declining leaves the generated `Dockerfile` byte-for-byte unchanged
+
 ## [1.1.0] - 2026-09-23
 
 ### Added
