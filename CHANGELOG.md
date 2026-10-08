@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bedrock install docs** — `_docs/containers.md` no longer tells you to run Composer on the
   host and fill in `src/.env` by hand
 
+### Fixed
+- **Welcome page links** — the WordPress welcome page linked phpMyAdmin and MailHog to
+  `{slug}.test-db.test` and `{slug}.test-mail.test`, built from the full host name; they now
+  point at `{slug}-db.test` and `{slug}-mail.test`
+
 ## [1.1.0] - 2026-09-23
 
 ### Added

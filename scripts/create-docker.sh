@@ -990,7 +990,7 @@ $slug = explode('.', $host)[0];
 </head>
 <body>
   <h1>Your WordPress environment is ready.</h1>
-  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($host) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($host) ?>-mail.test" target="_blank">MailHog</a></p>
+  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($slug) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($slug) ?>-mail.test" target="_blank">MailHog</a></p>
 
   <p class="step">Option A &mdash; fresh WordPress install</p>
   <p>Extract WordPress into <code>src/</code>, or run:</p>
@@ -1318,7 +1318,7 @@ $slug = explode('.', $host)[0];
 </head>
 <body>
   <h1>Your WordPress environment is ready.</h1>
-  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($host) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($host) ?>-mail.test" target="_blank">MailHog</a></p>
+  <p>PHP <?= phpversion() ?> &middot; <a href="https://<?= htmlspecialchars($slug) ?>-db.test" target="_blank">phpMyAdmin</a> &middot; <a href="https://<?= htmlspecialchars($slug) ?>-mail.test" target="_blank">MailHog</a></p>
 
   <p class="step">Option A &mdash; fresh WordPress install</p>
   <p>Extract WordPress into <code>src/</code>, or run:</p>
