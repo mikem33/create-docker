@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     location under `src/`, like the `wp` wrapper
   - Declining leaves the generated `Dockerfile` byte-for-byte unchanged
 
+- **Bedrock-ready WordPress** — WordPress projects (Apache and Nginx + FPM) can be prepared for
+  Bedrock; `create-docker` asks `Use Bedrock? [y/N]` before the Composer question
+  - Composer is included automatically, since Bedrock is installed with it
+  - The site is served from `src/web/` (`DocumentRoot` on Apache, `root` on Nginx), keeping
+    `.env`, `config/` and `vendor/` out of the document root
+  - `src/.env` is written with the project's database credentials, `DB_HOST='db'`,
+    `WP_HOME=https://{slug}.test`, `WP_SITEURL` ending in `/wp`, and random keys and salts
+  - Bedrock is not installed: a welcome page in `src/web/` shows a command that runs
+    `composer create-project` in `/tmp` and copies the result into `src/`, because
+    create-project refuses a non-empty directory; the prepared `.env` survives
+  - Declining leaves every generated file byte-for-byte unchanged
+
+### Changed
+- **Bedrock install docs** — `_docs/containers.md` no longer tells you to run Composer on the
+  host and fill in `src/.env` by hand
+
 ## [1.1.0] - 2026-09-23
 
 ### Added

@@ -11,6 +11,7 @@ A Bash script that spins up local web development environments with a single com
 - **Secure by default** — database passwords are auto-generated, never hardcoded
 - **Smart user mapping** — container UID/GID match your host user for seamless file permissions
 - **Optional Composer** — PHP and WordPress containers can include Composer 2, no PHP needed on the host
+- **Bedrock-ready WordPress** — serves `src/web/`, with Bedrock's `.env` already filled in
 
 ## Requirements
 
@@ -101,6 +102,8 @@ stop-docker my-project    # stops directly
   2) Nginx + PHP-FPM   — separate containers, more flexible
   > 2
 
+  Use Bedrock? [y/N] n
+
   Install Composer? [y/N] y
 
   Summary
@@ -108,6 +111,7 @@ stop-docker my-project    # stops directly
   Project:   my-project
   Type:      wordpress
   Server:    nginx
+  Bedrock:   no
   Composer:  yes
   Location:  /home/user/Dev/my-project
   URL:       https://my-project.test
@@ -175,11 +179,21 @@ You choose the web server when creating the project (Apache or Nginx + FPM). Bot
 | phpMyAdmin | `phpmyadmin:latest` | `https://{slug}-db.test` |
 | MailHog | `mailhog/mailhog:latest` | `https://{slug}-mail.test` |
 
-> **WordPress is not pre-installed.** The environment is ready to run it — download WordPress (or Bedrock) into `src/` yourself. See [_docs/containers.md](_docs/containers.md) for step-by-step instructions.
+> **WordPress is not pre-installed.** The environment is ready to run it — download WordPress into `src/` yourself, or choose Bedrock (below). See [_docs/containers.md](_docs/containers.md) for step-by-step instructions.
 
 PHP extensions included: `gd`, `mysqli`, `pdo_mysql`, `mbstring`, `xml`, `zip`, `curl`, `intl`, `exif`, `opcache`, `imagick`.
 
 Outgoing PHP mail is automatically captured by MailHog — no emails leave your machine.
+
+### Bedrock (optional)
+
+Answer `y` to `Use Bedrock? [y/N]` to prepare a WordPress project for [Bedrock](https://roots.io/bedrock/), on either web server:
+
+- Composer is included (the Composer question is skipped)
+- The site is served from `src/web/`, so `.env`, `config/` and `vendor/` stay out of the document root
+- `src/.env` is written with the project's database credentials, `DB_HOST='db'`, `WP_HOME=https://{slug}.test` and fresh keys and salts
+
+Bedrock itself is not installed: the welcome page at `https://{slug}.test` shows the command, which installs `roots/bedrock` (or any Bedrock-based package) without touching the prepared `.env`. See [_docs/containers.md](_docs/containers.md#installing-bedrock).
 
 ### Composer (optional)
 
@@ -218,7 +232,7 @@ define( 'DB_PASSWORD', '<value from .env>' );
 define( 'DB_HOST',     'db' );  // Docker service name — not localhost
 ```
 
-**Bedrock** (`src/.env`):
+**Bedrock** (`src/.env`) — written for you when you choose Bedrock; otherwise set:
 
 ```
 DB_NAME=my_project_db

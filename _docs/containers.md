@@ -335,29 +335,38 @@ WordPress will create `src/wp-config.php` automatically.
 
 ## Installing Bedrock
 
-[Bedrock](https://roots.io/bedrock/) is a modern WordPress boilerplate with Composer and a proper folder structure. It uses its own `.env` file inside the project.
+[Bedrock](https://roots.io/bedrock/) is a WordPress boilerplate managed with Composer, with WordPress
+in `web/wp/` and configuration in a `.env` file. Answer `y` to `Use Bedrock? [y/N]` when creating a
+WordPress project, on either web server, and the environment is prepared for it:
 
-1. Install Bedrock into `src/`:
+- **Composer** is included — Bedrock needs it, so the Composer question is skipped
+- **The site is served from `src/web/`**, Bedrock's public folder. `.env`, `config/` and `vendor/`
+  stay one level up, out of reach of the browser. On Apache the `Dockerfile` points
+  `DocumentRoot` at `/var/www/html/web`; on Nginx `nginx.conf` sets `root /var/www/html/web`
+- **`src/.env` is written for you**: the project's database name, user and password, `DB_HOST='db'`,
+  `WP_ENV='development'`, `WP_HOME='https://{slug}.test'`, `WP_SITEURL` ending in `/wp`, and freshly
+  generated keys and salts
+- **A welcome page** at `https://{slug}.test` (`src/web/index.php`) shows the install command
 
-   ```bash
-   cd ~/Dev/{slug}
-   composer create-project roots/bedrock src
-   ```
+The tool does not install Bedrock itself. Run the command from the welcome page:
 
-2. Edit `src/.env` with the database credentials from the project's `.env`:
+```bash
+# Apache variant — on Nginx + FPM the container is {slug}-php
+docker exec {slug}-web sh -c 'composer create-project roots/bedrock /tmp/bedrock && rm -f /tmp/bedrock/.env && cp -a /tmp/bedrock/. /var/www/html/ && rm -rf /tmp/bedrock'
+```
 
-   ```dotenv
-   DB_NAME=my_project_db
-   DB_USER=my_project_user
-   DB_PASSWORD=a1b2c3d4e5f6g7h8i9j0k1l2
-   DB_HOST=db
+`composer create-project` refuses a directory that is not empty, and `src/` already holds `.env` and
+the welcome page. So the command installs into `/tmp` inside the container and copies the result
+into `src/`, dropping any `.env` the package ships so the prepared one survives. Bedrock's own
+`web/index.php` replaces the welcome page. Open `https://{slug}.test` afterwards to run the WordPress
+installer, or use `wp core install`.
 
-   WP_ENV=development
-   WP_HOME=https://{slug}.test
-   WP_SITEURL=${WP_HOME}/wp
-   ```
+Any project based on Bedrock installs the same way: replace `roots/bedrock` with its package name.
+Its `post-create-project-cmd` scripts, if it has any, run in `/tmp/bedrock` rather than in `src/`.
 
-3. Generate `AUTH_KEY`, `SECURE_AUTH_KEY`, etc. using the [Roots Salt Generator](https://roots.io/salts.html) and add them to `src/.env`
+WP-CLI finds the installation through Bedrock's `wp-cli.yml` (`path: web/wp`), which it looks for in
+the working directory and its parents. The `wp` wrapper works from the project root and from any
+folder inside, such as `src/web/app/themes/my-theme`.
 
 ### Two .env files — no conflict
 
@@ -370,7 +379,7 @@ There are two `.env` files at different levels, serving different purposes:
     └── .env      ← Bedrock: configures the WordPress application
 ```
 
-Docker Compose reads the project root `.env` to set credentials on the MySQL container. Bedrock reads `src/.env` to connect to that same database. They must have matching values but are independent files.
+Docker Compose reads the project root `.env` to set credentials on the MySQL container. Bedrock reads `src/.env` to connect to that same database. They must have matching values but are independent files — with Bedrock chosen, create-docker writes both from the same generated credentials.
 
 ---
 
@@ -482,7 +491,8 @@ commands that prompt.
 ## Composer
 
 PHP and WordPress projects can include Composer — `create-docker` asks `Install Composer? [y/N]`
-after the web server choice. The default is no, and without it the generated `Dockerfile` is
+after the web server choice (WordPress projects using Bedrock skip the question and always get it).
+The default is no, and without it the generated `Dockerfile` is
 exactly what it would be otherwise. Nothing on the host needs PHP or Composer.
 
 With it, the PHP image gains:
