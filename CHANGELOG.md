@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Welcome page links** — the WordPress welcome page linked phpMyAdmin and MailHog to
   `{slug}.test-db.test` and `{slug}.test-mail.test`, built from the full host name; they now
   point at `{slug}-db.test` and `{slug}-mail.test`
+- **WordPress on Nginx: download command** — the welcome page ran the WordPress download in
+  `{slug}-web`, which is `nginx:alpine` with `src/` mounted read-only, so `tar` failed on every
+  file. It now runs in `{slug}-php`
+- **WordPress on Nginx: uploads over 1 MB** — Nginx's default `client_max_body_size` of 1M
+  rejected larger media uploads with 413 before PHP saw them. It is now 64M, matching PHP's
+  `upload_max_filesize`
 
 ## [1.1.0] - 2026-09-23
 

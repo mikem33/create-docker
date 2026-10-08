@@ -1152,6 +1152,10 @@ NGINX_EOF
     cat >> "$dir/nginx/nginx.conf" <<'NGINX_EOF'
     index index.php index.html;
 
+    # Nginx rejects request bodies over 1M by default, before PHP sees them, so
+    # any media upload past that fails with 413. Match PHP's upload_max_filesize.
+    client_max_body_size 64M;
+
     # WordPress permalink routing
     location / {
         try_files $uri $uri/ /index.php?$args;
@@ -1322,7 +1326,7 @@ $slug = explode('.', $host)[0];
 
   <p class="step">Option A &mdash; fresh WordPress install</p>
   <p>Extract WordPress into <code>src/</code>, or run:</p>
-  <pre><code>docker exec <?= htmlspecialchars($slug) ?>-web sh -c "curl -sL https://wordpress.org/latest.tar.gz | tar xz --strip-components=1 -C /var/www/html"</code></pre>
+  <pre><code>docker exec <?= htmlspecialchars($slug) ?>-php sh -c "curl -sL https://wordpress.org/latest.tar.gz | tar xz --strip-components=1 -C /var/www/html"</code></pre>
 
   <p class="step">Option B &mdash; clone your existing repo</p>
   <pre><code>git clone https://github.com/you/your-repo.git src/</code></pre>
