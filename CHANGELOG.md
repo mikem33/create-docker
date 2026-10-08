@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **WordPress on Nginx: uploads over 1 MB** — Nginx's default `client_max_body_size` of 1M
   rejected larger media uploads with 413 before PHP saw them. It is now 64M, matching PHP's
   `upload_max_filesize`
+- **WordPress mail never reached MailHog** — `sendmail_path` passed `--smtp-addr mailhog:1025`,
+  but mhsendmail only accepts `--smtp-addr=mailhog:1025`; with the space it exited with "flag
+  needs an argument" and `mail()` / `wp_mail()` returned false on both web servers. The value is
+  now written with `=`, and quoted, since an unquoted `=` is a syntax error in `php.ini`.
+  Existing projects need the same change in their `Dockerfile` and a rebuild
 
 ## [1.1.0] - 2026-09-23
 

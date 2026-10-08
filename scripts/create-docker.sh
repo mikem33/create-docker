@@ -836,13 +836,16 @@ RUN for b in mariadb mariadb-dump mariadb-check mysql mysqldump mysqlcheck; do \
         && chmod +x /usr/local/bin/"$b"; \
     done
 
-# PHP settings tuned for WordPress development
+# PHP settings tuned for WordPress development. mhsendmail only takes
+# --smtp-addr=host:port; written with a space it exits with "flag needs an
+# argument" and mail() returns false for every message. The value is quoted
+# because an unquoted = is a syntax error in php.ini.
 RUN { \
         echo "upload_max_filesize = 64M"; \
         echo "post_max_size = 64M"; \
         echo "max_execution_time = 300"; \
         echo "memory_limit = 256M"; \
-        echo "sendmail_path = /usr/local/bin/mhsendmail --smtp-addr mailhog:1025"; \
+        echo 'sendmail_path = "/usr/local/bin/mhsendmail --smtp-addr=mailhog:1025"'; \
     } > /usr/local/etc/php/conf.d/wordpress.ini \
     && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
     && sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
@@ -1113,13 +1116,16 @@ RUN for b in mariadb mariadb-dump mariadb-check mysql mysqldump mysqlcheck; do \
         && chmod +x /usr/local/bin/"$b"; \
     done
 
-# PHP settings tuned for WordPress development
+# PHP settings tuned for WordPress development. mhsendmail only takes
+# --smtp-addr=host:port; written with a space it exits with "flag needs an
+# argument" and mail() returns false for every message. The value is quoted
+# because an unquoted = is a syntax error in php.ini.
 RUN { \
         echo "upload_max_filesize = 64M"; \
         echo "post_max_size = 64M"; \
         echo "max_execution_time = 300"; \
         echo "memory_limit = 256M"; \
-        echo "sendmail_path = /usr/local/bin/mhsendmail --smtp-addr mailhog:1025"; \
+        echo 'sendmail_path = "/usr/local/bin/mhsendmail --smtp-addr=mailhog:1025"'; \
     } > /usr/local/etc/php/conf.d/wordpress.ini
 
 EOF
