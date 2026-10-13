@@ -64,6 +64,13 @@ ensure_proxy_running() {
         die "Global proxy not found. Run create-docker first to set it up."
     fi
 
+    # The shared network is Docker state, not a file: it is gone after a fresh Docker
+    # (e.g. reinstalling the system) even though the projects are still on disk.
+    if ! docker network ls --format '{{.Name}}' | grep -q '^proxy$'; then
+        docker network create proxy >/dev/null
+        success "Docker network 'proxy' created."
+    fi
+
     if docker compose --project-directory "$PROXY_DIR" -f "$PROXY_DIR/docker-compose.yml" ps --quiet 2>/dev/null | grep -q .; then
         return  # already running
     fi
