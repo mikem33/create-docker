@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Remote DB** — a fourth container type: phpMyAdmin for a MySQL server on another machine,
+  through an SSH tunnel; served at `https://{slug}.test` and managed with `start-docker` /
+  `stop-docker` / `delete-docker` like any project
+  - A `tunnel` container (alpine + openssh-client, built locally) keeps `ssh -N -L` open to the
+    server's `127.0.0.1`; nothing new is exposed on the server
+  - Authenticates with a key file without passphrase (mounted alone, read-only) or with the SSH
+    agent in `SSH_AUTH_SOCK`; both mounts use `create_host_path: false`, and a missing
+    `SSH_AUTH_SOCK` stops `start-docker` with a clear message
+  - The server's host key is pinned in the project's own `known_hosts`, copied from
+    `~/.ssh/known_hosts` or scanned and confirmed at creation
+  - Optional TLS to MySQL for servers with `require_secure_transport=ON`
+  - Both containers use `restart: "no"`, so nothing starts on boot
+
 - **Optional Composer** — PHP and WordPress projects (Apache and Nginx + FPM) can include
   Composer 2 in the PHP container; `create-docker` asks `Install Composer? [y/N]`
   - Copied from the official `composer:2` image, with `git` and `unzip` for source and dist

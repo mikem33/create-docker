@@ -383,6 +383,53 @@ Docker Compose reads the project root `.env` to set credentials on the MySQL con
 
 ---
 
+## Remote DB — phpMyAdmin over SSH
+
+phpMyAdmin for a MySQL server on another machine (a VPS, a production server), reached through an SSH tunnel. Nothing new is opened on the server: MySQL can keep listening on its own `localhost` only.
+
+### What it creates
+
+```
+~/Dev/{slug}/
+├── docker-compose.yml
+├── config.user.inc.php  ← phpMyAdmin settings: server name, TLS to MySQL
+├── known_hosts          ← the server's SSH host key, for this project only
+└── tunnel/
+    └── Dockerfile       ← alpine + openssh-client
+```
+
+### Questions
+
+| Question | Default | Notes |
+|---|---|---|
+| SSH host | — | `user@host` |
+| SSH port | `22` | |
+| SSH authentication | Key file | Key file, or the SSH agent in `SSH_AUTH_SOCK` |
+| Key file | `~/.ssh/id_ed25519` | Must have no passphrase: the tunnel runs unattended. Use the agent for a key with a passphrase |
+| MySQL port on the server | `3306` | |
+| Use TLS to MySQL | Yes | Needed when the server sets `require_secure_transport=ON` |
+
+### Services
+
+| Service | Image | Role |
+|---|---|---|
+| `tunnel` | built from `tunnel/Dockerfile` | Keeps `ssh -N -L` open: port 3306 in the container → MySQL on the server's `127.0.0.1` |
+| `phpmyadmin` | `phpmyadmin:latest` | Served at `https://{slug}.test`; connects to `tunnel:3306` |
+
+### How it works
+
+- **SSH key** — only the chosen key file is mounted, read-only; `~/.ssh` is never mounted. With the agent option, the socket in `SSH_AUTH_SOCK` is mounted instead, and `start-docker` stops with a clear message when the variable is not set (e.g. from a TTY).
+- **Missing key or socket** — the bind mounts use `create_host_path: false`, so Docker refuses to start instead of creating an empty directory in their place.
+- **Host key** — `known_hosts` is copied from your `~/.ssh/known_hosts` when the server is already there; otherwise the key is scanned at creation and its fingerprint shown for you to confirm. The tunnel runs with `StrictHostKeyChecking=yes`.
+- **TLS** — with TLS on, phpMyAdmin encrypts the MySQL connection but does not verify the server's certificate (MySQL's auto-generated one is self-signed); the SSH tunnel already authenticates the server.
+- **No restart on boot** — both containers use `restart: "no"`. They run between `start-docker {slug}` and `stop-docker {slug}`; if the connection drops, run `start-docker {slug}` again.
+
+### Accessing the database
+
+Open `https://{slug}.test` and log in with a MySQL user of the remote server. phpMyAdmin connects as that user from the server's `localhost`, so a user defined as `'name'@'localhost'` works.
+
+---
+
 ## Managing containers
 
 All standard `docker compose` commands work from the project directory:

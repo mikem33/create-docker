@@ -1343,6 +1343,138 @@ $slug = explode('.', $host)[0];
 WELCOME
 }
 
+# ─── Remote DB (phpMyAdmin over an SSH tunnel) ───────────────────────────────
+# phpMyAdmin for a MySQL server that only listens on the remote host's localhost.
+# A small "tunnel" container keeps an SSH port forward open to it, so nothing new
+# is exposed on the server and MySQL is never reachable from the host's network.
+# Neither container restarts on boot: they run only between start-docker and
+# stop-docker.
+
+# Prints the remote host's key lines for the project's known_hosts: copied from the
+# user's own known_hosts when the host is already trusted there, otherwise scanned
+# and shown so the user can confirm the fingerprint (trust on first use).
+remote_known_hosts() {
+    local host="$1" port="$2" out="$3"
+    local entry="$host"
+    [ "$port" = "22" ] || entry="[$host]:$port"
+
+    if [ -f "$HOME/.ssh/known_hosts" ] \
+        && ssh-keygen -F "$entry" -f "$HOME/.ssh/known_hosts" 2>/dev/null | grep -v '^#' > "$out" \
+        && [ -s "$out" ]; then
+        success "Host key for ${entry} copied from ~/.ssh/known_hosts."
+        return
+    fi
+
+    info "${entry} is not in ~/.ssh/known_hosts — scanning its host key..."
+    ssh-keyscan -p "$port" "$host" 2>/dev/null > "$out" || true
+    [ -s "$out" ] || die "Could not read the host key of ${entry}. Is the host reachable on port ${port}?"
+    echo ""
+    ssh-keygen -lf "$out" | sed 's/^/      /'
+    echo ""
+    read -rp "  Trust this host key? [y/N] " trust
+    [[ "$trust" =~ ^[Yy]$ ]] || { rm -f "$out"; die "Host key not trusted. Aborted."; }
+}
+
+create_remote_db() {
+    local slug="$1"
+    local dir="$DEV_DIR/$slug"
+    local user_host="${remote_user}@${remote_host}"
+
+    mkdir -p "$dir/tunnel"
+
+    remote_known_hosts "$remote_host" "$remote_ssh_port" "$dir/known_hosts"
+
+    cat > "$dir/tunnel/Dockerfile" <<'EOF'
+# SSH client for the tunnel to the remote MySQL server
+FROM alpine:3.20
+RUN apk add --no-cache openssh-client
+EOF
+
+    # How the tunnel authenticates: a read-only key file, or the host's SSH agent.
+    # create_host_path: false stops Docker from creating an empty directory in place
+    # of a missing key file or agent socket.
+    local ssh_auth_opts ssh_auth_volume ssh_auth_env=""
+    if [ "$remote_auth" = "agent" ]; then
+        ssh_auth_opts=""
+        ssh_auth_volume="      - type: bind
+        source: \${SSH_AUTH_SOCK:?SSH_AUTH_SOCK is not set - start an SSH agent first}
+        target: /run/ssh/agent.sock
+        bind:
+          create_host_path: false"
+        ssh_auth_env="    environment:
+      SSH_AUTH_SOCK: /run/ssh/agent.sock
+"
+    else
+        ssh_auth_opts="-i /run/ssh/key -o IdentitiesOnly=yes "
+        ssh_auth_volume="      - type: bind
+        source: ${remote_key}
+        target: /run/ssh/key
+        read_only: true
+        bind:
+          create_host_path: false"
+    fi
+
+    cat > "$dir/docker-compose.yml" <<EOF
+services:
+  # ── SSH tunnel — forwards port 3306 here to MySQL on the remote host ─────────
+  tunnel:
+    build: ./tunnel
+    container_name: ${slug}-tunnel
+    restart: "no"
+    command: >
+      ssh -N -p ${remote_ssh_port} ${ssh_auth_opts}-o BatchMode=yes
+      -o UserKnownHostsFile=/run/ssh/known_hosts -o StrictHostKeyChecking=yes
+      -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+      -L 0.0.0.0:3306:127.0.0.1:${remote_db_port} ${user_host}
+${ssh_auth_env}    volumes:
+${ssh_auth_volume}
+      - ./known_hosts:/run/ssh/known_hosts:ro
+    networks:
+      - internal
+
+  # ── phpMyAdmin — log in with a MySQL user of the remote server ───────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: ${slug}-phpmyadmin
+    restart: "no"
+    depends_on:
+      - tunnel
+    environment:
+      PMA_HOST: tunnel
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 256M
+    volumes:
+      - ./config.user.inc.php:/etc/phpmyadmin/config.user.inc.php:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
+      - "traefik.http.routers.${slug}.entrypoints=websecure"
+      - "traefik.http.routers.${slug}.tls=true"
+      - "traefik.http.services.${slug}.loadbalancer.server.port=80"
+    networks:
+      - proxy
+      - internal
+
+networks:
+  proxy:
+    external: true
+  internal:
+    driver: bridge
+EOF
+
+    {
+        echo "<?php"
+        echo "// Name shown on the login page"
+        echo "\$cfg['Servers'][1]['verbose'] = '${remote_host}';"
+        if [ "$remote_tls" = "y" ]; then
+            echo "// TLS to MySQL (needed when the server sets require_secure_transport)."
+            echo "// The certificate is not verified: the SSH tunnel already authenticates the host."
+            echo "\$cfg['Servers'][1]['ssl'] = true;"
+            echo "\$cfg['Servers'][1]['ssl_verify'] = false;"
+        fi
+    } > "$dir/config.user.inc.php"
+}
+
 
 main() {
     print_header
@@ -1373,14 +1505,65 @@ main() {
     select choice in \
         "HTML       — nginx:alpine, static files only" \
         "PHP        — PHP 8.3, general PHP development" \
-        "WordPress  — PHP 8.3 + MySQL + phpMyAdmin + MailHog"; do
+        "WordPress  — PHP 8.3 + MySQL + phpMyAdmin + MailHog" \
+        "Remote DB  — phpMyAdmin for a remote MySQL server, over SSH"; do
         case $REPLY in
             1) container_type="html";      break ;;
             2) container_type="php";       break ;;
             3) container_type="wordpress"; break ;;
-            *) warn "Please enter 1, 2, or 3." ;;
+            4) container_type="remote";    break ;;
+            *) warn "Please enter 1, 2, 3, or 4." ;;
         esac
     done
+
+    # ── Remote DB settings ────────────────────────────────────────────────────
+    if [ "$container_type" = "remote" ]; then
+        command -v ssh-keyscan &>/dev/null || die "ssh-keyscan not found. Install the OpenSSH client."
+
+        echo ""
+        echo -e "  ${BOLD}SSH host${RESET} (user@host):"
+        read -rp "  > " remote_target
+        [[ "$remote_target" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+$ ]] \
+            || die "Invalid SSH host. Use user@host, e.g. deploy@203.0.113.10"
+        remote_user="${remote_target%@*}"
+        remote_host="${remote_target#*@}"
+
+        read -rp "  SSH port [22]: " remote_ssh_port
+        remote_ssh_port="${remote_ssh_port:-22}"
+        [[ "$remote_ssh_port" =~ ^[0-9]+$ ]] || die "Invalid SSH port."
+
+        echo ""
+        echo -e "  ${BOLD}SSH authentication:${RESET}"
+        select choice in \
+            "Key file   — a private key file without passphrase" \
+            "SSH agent  — the agent in SSH_AUTH_SOCK when the project starts"; do
+            case $REPLY in
+                1) remote_auth="key";   break ;;
+                2) remote_auth="agent"; break ;;
+                *) warn "Please enter 1 or 2." ;;
+            esac
+        done
+
+        remote_key=""
+        if [ "$remote_auth" = "key" ]; then
+            read -rp "  Key file [~/.ssh/id_ed25519]: " remote_key
+            remote_key="${remote_key:-~/.ssh/id_ed25519}"
+            remote_key="${remote_key/#\~/$HOME}"
+            [ -r "$remote_key" ] || die "Cannot read key file: $remote_key"
+            # The tunnel runs unattended, so it cannot ask for a passphrase
+            ssh-keygen -y -P "" -f "$remote_key" &>/dev/null \
+                || die "The key has a passphrase. Load it in an SSH agent and choose 'SSH agent' instead."
+        fi
+
+        echo ""
+        read -rp "  MySQL port on the server [3306]: " remote_db_port
+        remote_db_port="${remote_db_port:-3306}"
+        [[ "$remote_db_port" =~ ^[0-9]+$ ]] || die "Invalid MySQL port."
+
+        read -rp "  Use TLS to MySQL? [Y/n] " tls_answer
+        remote_tls="y"
+        [[ "$tls_answer" =~ ^[Nn]$ ]] && remote_tls="n"
+    fi
 
     # ── HTML project subtype ───────────────────────────────────────────────────
     html_type="static"  # default
@@ -1401,7 +1584,7 @@ main() {
 
     # ── Web server (PHP and WordPress only) ───────────────────────────────────
     server_type="nginx"  # HTML always uses nginx; this default covers it
-    if [ "$container_type" != "html" ]; then
+    if [ "$container_type" = "php" ] || [ "$container_type" = "wordpress" ]; then
         echo ""
         echo -e "  ${BOLD}Web server:${RESET}"
         select choice in \
@@ -1430,7 +1613,7 @@ main() {
     install_composer="n"
     if [ "$use_bedrock" = "y" ]; then
         install_composer="y"
-    elif [ "$container_type" != "html" ]; then
+    elif [ "$container_type" = "php" ] || [ "$container_type" = "wordpress" ]; then
         echo ""
         read -rp "  Install Composer? [y/N] " composer_answer
         if [[ "$composer_answer" =~ ^[Yy]$ ]]; then
@@ -1446,7 +1629,15 @@ main() {
     echo "  Type:      $container_type"
     if [ "$container_type" = "html" ]; then
         echo "  Subtype:   $html_type"
-    elif [ "$container_type" != "html" ]; then
+    elif [ "$container_type" = "remote" ]; then
+        echo "  SSH:       ${remote_user}@${remote_host}:${remote_ssh_port}"
+        if [ "$remote_auth" = "key" ]; then
+            echo "  Auth:      key file $remote_key"
+        else
+            echo "  Auth:      SSH agent"
+        fi
+        echo "  MySQL:     port $remote_db_port on the server, TLS $([ "$remote_tls" = "y" ] && echo yes || echo no)"
+    else
         echo "  Server:    $server_type"
         if [ "$container_type" = "wordpress" ]; then
             echo "  Bedrock:   $([ "$use_bedrock" = "y" ] && echo yes || echo no)"
@@ -1454,7 +1645,11 @@ main() {
         echo "  Composer:  $([ "$install_composer" = "y" ] && echo yes || echo no)"
     fi
     echo "  Location:  $DEV_DIR/$slug"
-    echo "  URL:       https://${slug}.test"
+    if [ "$container_type" = "remote" ]; then
+        echo "  DB admin:  https://${slug}.test"
+    else
+        echo "  URL:       https://${slug}.test"
+    fi
     if [ "$container_type" = "wordpress" ]; then
         echo "  DB admin:  https://${slug}-db.test"
         echo "  Mail:      https://${slug}-mail.test"
@@ -1477,6 +1672,7 @@ main() {
         php/*/nginx)      create_php_nginx        "$slug" ;;
         wordpress/*/apache) create_wordpress_apache "$slug" ;;
         wordpress/*/nginx)  create_wordpress_nginx  "$slug" ;;
+        remote/*/*)         create_remote_db        "$slug" ;;
     esac
     success "Project files created."
 
@@ -1509,7 +1705,15 @@ main() {
     echo "  ─────────────────────────────────────"
     echo -e "  ${GREEN}${BOLD}Ready!${RESET}"
     echo ""
-    echo -e "  Site:     ${BOLD}https://${slug}.test${RESET}"
+    if [ "$container_type" = "remote" ]; then
+        echo -e "  DB admin: ${BOLD}https://${slug}.test${RESET}"
+        echo "  Log in with a MySQL user of ${remote_host}."
+        echo ""
+        echo -e "  Start: ${BOLD}start-docker ${slug}${RESET}   Stop: ${BOLD}stop-docker ${slug}${RESET}"
+        echo "  Nothing starts on boot; the tunnel is open only while the project runs."
+    else
+        echo -e "  Site:     ${BOLD}https://${slug}.test${RESET}"
+    fi
     if [ "$container_type" = "html" ] && [ "$html_type" = "vite" ]; then
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"

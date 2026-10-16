@@ -5,6 +5,7 @@ A Bash script that spins up local web development environments with a single com
 ## Features
 
 - **Four ready-to-use environments**: HTML (Nginx), PHP 8.3 (Apache/Nginx), Vite (dev server), and WordPress (PHP + MySQL + phpMyAdmin + MailHog)
+- **Remote DB** — phpMyAdmin for a MySQL server on another machine, through an SSH tunnel
 - **Automatic HTTPS** with trusted local certificates via [mkcert](https://github.com/FiloSottile/mkcert)
 - **Custom `.test` domains** — access your project at `https://my-project.test`
 - **Multiple projects simultaneously** — a shared Traefik reverse proxy routes traffic by hostname
@@ -95,6 +96,7 @@ stop-docker my-project    # stops directly
   1) HTML       — nginx:alpine, static files only
   2) PHP        — PHP 8.3, general PHP development
   3) WordPress  — PHP 8.3 + MySQL + phpMyAdmin + MailHog
+  4) Remote DB  — phpMyAdmin for a remote MySQL server, over SSH
   > 3
 
   Web server:
@@ -194,6 +196,17 @@ Answer `y` to `Use Bedrock? [y/N]` to prepare a WordPress project for [Bedrock](
 - `src/.env` is written with the project's database credentials, `DB_HOST='db'`, `WP_HOME=https://{slug}.test` and fresh keys and salts
 
 Bedrock itself is not installed: the welcome page at `https://{slug}.test` shows the command, which installs `roots/bedrock` (or any Bedrock-based package) without touching the prepared `.env`. See [_docs/containers.md](_docs/containers.md#installing-bedrock).
+
+### Remote DB — phpMyAdmin over SSH
+
+phpMyAdmin for a MySQL server on another machine, reached through an SSH tunnel that runs in a container. Nothing is opened on the server, and nothing starts on boot.
+
+| Service | Image | URL |
+|---|---|---|
+| SSH tunnel | `alpine` + `openssh-client` (built) | Internal only |
+| phpMyAdmin | `phpmyadmin:latest` | `https://{slug}.test` |
+
+`create-docker` asks for the SSH host (`user@host`), the SSH port, how to authenticate (a key file without passphrase, or the SSH agent in `SSH_AUTH_SOCK`), the MySQL port on the server and whether to use TLS. Only the key file is mounted, read-only, and the server's host key is pinned in the project's own `known_hosts`. Use it like any project: `start-docker {slug}`, log in at `https://{slug}.test` with a MySQL user of the server, `stop-docker {slug}`. See [_docs/containers.md](_docs/containers.md#remote-db--phpmyadmin-over-ssh).
 
 ### Composer (optional)
 
