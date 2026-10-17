@@ -62,6 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needs an argument" and `mail()` / `wp_mail()` returned false on both web servers. The value is
   now written with `=`, and quoted, since an unquoted `=` is a syntax error in `php.ini`.
   Existing projects need the same change in their `Dockerfile` and a rebuild
+- **Apache: directory redirects to :8080** — on Apache projects (PHP and WordPress), a directory
+  without its trailing slash, such as `/wp-admin`, redirected to
+  `http://{slug}.test:8080/wp-admin/`: Apache built the URL from the plain-HTTP hop it gets from
+  Traefik on port 8080. The vhost now has `ServerName https://${APACHE_SERVER_NAME}` and
+  `UseCanonicalName On`, with `APACHE_SERVER_NAME={slug}.test` set in `docker-compose.yml`, so
+  the redirect goes to `https://{slug}.test/wp-admin/`. Existing projects need both changes
+  (the `RUN sed` line in their `Dockerfile` and the variable in `docker-compose.yml`) and a rebuild
+- **Nginx: redirects to http://** — Nginx's own redirects were absolute `http://` URLs, since it
+  only sees Traefik's plain-HTTP hop; Traefik then bounced them back to https. The PHP,
+  WordPress and Vite Nginx configs now set `absolute_redirect off`, so redirects stay relative
+  and the browser keeps `https://{slug}.test`
 
 ## [1.1.0] - 2026-09-23
 

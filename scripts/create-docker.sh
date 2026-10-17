@@ -340,6 +340,10 @@ create_vite() {
     cat > "$dir/nginx/nginx.conf" <<'NGINX_EOF'
 server {
     listen 80;
+    # Nginx only sees Traefik's plain-HTTP hop, so its own redirects (e.g. adding a
+    # directory's trailing slash) would point at http://. Keep them relative, so the
+    # browser stays on https://{slug}.test.
+    absolute_redirect off;
     server_name _;
 
     location / {
@@ -562,6 +566,14 @@ RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
         > /etc/apache2/conf-available/forwarded-proto.conf \
     && a2enconf forwarded-proto
 
+# Apache builds its own redirects (e.g. mod_dir adding the trailing slash to a
+# directory) from how it was reached: plain HTTP on port 8080, behind Traefik. So
+# /some-dir became http://{slug}.test:8080/some-dir/. Give the vhost its public
+# https name so they point at https://{slug}.test instead. APACHE_SERVER_NAME is
+# set in docker-compose.yml; Apache expands ${...} from the environment.
+RUN sed -i 's#<VirtualHost \*:8080>#&\n\tServerName https://${APACHE_SERVER_NAME}\n\tUseCanonicalName On#' \
+        /etc/apache2/sites-available/000-default.conf
+
 EOF
     append_composer_layer "$dir/Dockerfile"
     cat >> "$dir/Dockerfile" <<'EOF'
@@ -578,6 +590,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./src:/var/www/html
+    environment:
+      # Public name for Apache's own redirects (see the Dockerfile)
+      APACHE_SERVER_NAME: ${slug}.test
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
@@ -643,6 +658,10 @@ map $http_x_forwarded_proto $https_from_proxy {
 
 server {
     listen 80;
+    # Nginx only sees Traefik's plain-HTTP hop, so its own redirects (e.g. adding a
+    # directory's trailing slash) would point at http://. Keep them relative, so the
+    # browser stays on https://{slug}.test.
+    absolute_redirect off;
     root  /var/www/html;
     index index.php index.html;
 
@@ -860,6 +879,14 @@ RUN printf 'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on\n' \
         > /etc/apache2/conf-available/forwarded-proto.conf \
     && a2enconf forwarded-proto
 
+# Apache builds its own redirects (e.g. mod_dir adding the trailing slash to
+# /wp-admin) from how it was reached: plain HTTP on port 8080, behind Traefik. So
+# /wp-admin became http://{slug}.test:8080/wp-admin/. Give the vhost its public
+# https name so they point at https://{slug}.test instead. APACHE_SERVER_NAME is
+# set in docker-compose.yml; Apache expands ${...} from the environment.
+RUN sed -i 's#<VirtualHost \*:8080>#&\n\tServerName https://${APACHE_SERVER_NAME}\n\tUseCanonicalName On#' \
+        /etc/apache2/sites-available/000-default.conf
+
 EOF
     append_bedrock_docroot_layer "$dir/Dockerfile"
     append_composer_layer "$dir/Dockerfile"
@@ -886,6 +913,8 @@ services:
     environment:
       # DB_HOST is always "db" (the Docker service name) — not localhost
       DB_HOST: db
+      # Public name for Apache's own redirects (see the Dockerfile)
+      APACHE_SERVER_NAME: ${slug}.test
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
@@ -1146,6 +1175,10 @@ map $http_x_forwarded_proto $https_from_proxy {
 
 server {
     listen 80;
+    # Nginx only sees Traefik's plain-HTTP hop, so its own redirects (e.g. adding a
+    # directory's trailing slash) would point at http://. Keep them relative, so the
+    # browser stays on https://{slug}.test.
+    absolute_redirect off;
 NGINX_EOF
     # Bedrock serves WordPress from web/, keeping .env, config/ and vendor/
     # outside the document root. SCRIPT_FILENAME below is built from $document_root,
