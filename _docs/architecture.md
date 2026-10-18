@@ -137,7 +137,7 @@ Each WordPress project uses **two Docker networks**:
 └─────────────────────────────────┘
 ```
 
-HTML and PHP projects use only the `proxy` network since they have no internal services.
+HTML projects and PHP / Apache projects without a database use only the `proxy` network, since they have no internal services.
 
 ## /etc/hosts
 
@@ -173,7 +173,7 @@ create-docker
      │           └─ docker compose up -d
      │
      ├─ create_{html|php|wordpress}()
-     │     └─ write docker-compose.yml, Dockerfile, .env, .gitignore, starter file
+     │     └─ write docker-compose.yml, Dockerfile, .env (WordPress, PHP with a database), .gitignore, starter file
      │
      ├─ generate_project_cert()
      │     ├─ mkcert <slug>.test [<slug>-db.test <slug>-mail.test]  → certs/

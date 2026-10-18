@@ -181,9 +181,25 @@ The generated `nginx/nginx.conf` includes:
 - FastCGI pass to `php:9000`
 - Access to hidden files (`.htaccess`, `.env`) is denied
 
-### Adding a database (PHP containers)
+### Database (optional)
 
-This container type has no database by default. If you need MySQL later, you can manually add a `db` service to the generated `docker-compose.yml`. See the WordPress container below for an example of how a MySQL service is configured.
+After the web server and Composer questions, `create-docker` asks `Add a MySQL database? [y/N]`. With `y`, both variants also get:
+
+- A `db` service (`mysql:8.0`, data in the `db_data` volume, on the internal network only) and `phpmyadmin` at `https://{slug}-db.test` — the same two services as WordPress
+- A `.env` with generated credentials, in the same format as WordPress's (see [Database credentials](#database-credentials))
+- In the PHP container (`web` on Apache, `php` on Nginx + FPM), the variables `DB_HOST=db`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`, taken from `.env`; the container waits until MySQL is healthy before starting
+
+Read them with `getenv()`, so the same code works with whatever values another environment provides:
+
+```php
+$pdo = new PDO(
+    'mysql:host=' . getenv('DB_HOST') . ';dbname=' . getenv('DB_NAME'),
+    getenv('DB_USER'),
+    getenv('DB_PASSWORD'),
+);
+```
+
+They also show up in the "Environment" section of the starter `phpinfo()` page. Declining leaves the project exactly as before: no `.env`, and on Apache only the `proxy` network.
 
 ### Accessing the site
 

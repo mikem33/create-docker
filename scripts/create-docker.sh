@@ -7,7 +7,8 @@
 #
 # Supported container types:
 #   html       — Nginx serving static files
-#   php        — PHP 8.3 + Apache or Nginx+FPM (mod_rewrite, pdo_mysql, mysqli)
+#   php        — PHP 8.3 + Apache or Nginx+FPM (mod_rewrite, pdo_mysql, mysqli),
+#                optionally with MySQL + phpMyAdmin
 #   wordpress  — PHP 8.3 + MySQL + phpMyAdmin + MailHog (Apache or Nginx+FPM)
 
 set -euo pipefail
@@ -260,6 +261,8 @@ generate_project_cert() {
     local -a domains=("${slug}.test")
     if [ "$container_type" = "wordpress" ]; then
         domains+=("${slug}-db.test" "${slug}-mail.test")
+    elif [ "${use_db:-n}" = "y" ]; then
+        domains+=("${slug}-db.test")
     fi
 
     info "Generating TLS certificate for ${domains[*]}..."
@@ -529,8 +532,103 @@ $container = $slug . '-' . $service;
 WELCOME
 }
 
+# ─── MySQL database (WordPress, and PHP when asked for) ──────────────────────
+# Generates the credentials and writes them to the project's .env, which Docker
+# Compose reads for the ${MYSQL_*} references in docker-compose.yml. Sets
+# db_name, db_user and db_password in the caller's scope, so the caller declares
+# them local first. $3 is the comment line telling where the values are used.
+write_db_env() {
+    local dir="$1" slug="$2" usage="$3"
+    local db_root_password
+    db_name=$(db_identifier "$slug" db 64)
+    db_user=$(db_identifier "$slug" user 32)
+    db_password=$(gen_password)
+    db_root_password=$(gen_password)
+
+    # DO NOT commit this file.
+    cat > "$dir/.env" <<EOF
+# Database credentials — generated automatically
+# ${usage}
+# The database host inside Docker is always: db
+MYSQL_DATABASE=${db_name}
+MYSQL_USER=${db_user}
+MYSQL_PASSWORD=${db_password}
+MYSQL_ROOT_PASSWORD=${db_root_password}
+EOF
+}
+
+# Prints the db and phpmyadmin services for docker-compose.yml. The compose file
+# also needs the db_data volume and the internal network, which the caller adds.
+db_services_yaml() {
+    local slug="$1"
+    cat <<EOF
+  # ── MySQL database ────────────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: ${slug}-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: \${MYSQL_DATABASE}
+      MYSQL_USER: \${MYSQL_USER}
+      MYSQL_PASSWORD: \${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p\${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  # ── phpMyAdmin ────────────────────────────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: ${slug}-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_USER: \${MYSQL_USER}
+      PMA_PASSWORD: \${MYSQL_PASSWORD}
+      UPLOAD_LIMIT: 256M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${slug}-pma.rule=Host(\`${slug}-db.test\`)"
+      - "traefik.http.routers.${slug}-pma.entrypoints=websecure"
+      - "traefik.http.routers.${slug}-pma.tls=true"
+      - "traefik.http.services.${slug}-pma.loadbalancer.server.port=80"
+    networks:
+      - proxy
+      - internal
+EOF
+}
+
+# For a PHP project with a database: the PHP container waits for MySQL and gets
+# the credentials from .env as DB_* environment variables, read with getenv().
+php_db_depends_yaml() {
+    cat <<'EOF'
+    depends_on:
+      db:
+        condition: service_healthy
+EOF
+}
+
+php_db_env_yaml() {
+    cat <<'EOF'
+      # Database from .env — DB_HOST is the Docker service name, not localhost
+      DB_HOST: db
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+EOF
+}
+
 # ─── PHP / Apache container ───────────────────────────────────────────────────
 # Single container: php:8.3-apache with mod_rewrite and DB extensions.
+# With use_db=y, also MySQL + phpMyAdmin.
 
 create_php_apache() {
     local slug="$1"
@@ -582,17 +680,31 @@ EXPOSE 8080
 USER www-data
 EOF
 
-    cat > "$dir/docker-compose.yml" <<EOF
+    local db_name db_user db_password
+    if [ "${use_db:-n}" = "y" ]; then
+        write_db_env "$dir" "$slug" "The PHP container gets them as DB_NAME, DB_USER and DB_PASSWORD (read them with getenv)"
+    fi
+
+    # docker-compose.yml — written in parts, so the database pieces go in only
+    # when the project has one
+    local compose="$dir/docker-compose.yml"
+    cat > "$compose" <<EOF
 services:
   web:
     build: .
     container_name: ${slug}-web
     restart: unless-stopped
+EOF
+    [ "${use_db:-n}" = "y" ] && php_db_depends_yaml >> "$compose"
+    cat >> "$compose" <<EOF
     volumes:
       - ./src:/var/www/html
     environment:
       # Public name for Apache's own redirects (see the Dockerfile)
       APACHE_SERVER_NAME: ${slug}.test
+EOF
+    [ "${use_db:-n}" = "y" ] && php_db_env_yaml >> "$compose"
+    cat >> "$compose" <<EOF
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${slug}.rule=Host(\`${slug}.test\`)"
@@ -601,11 +713,30 @@ services:
       - "traefik.http.services.${slug}.loadbalancer.server.port=8080"
     networks:
       - proxy
+EOF
+    if [ "${use_db:-n}" = "y" ]; then
+        cat >> "$compose" <<EOF
+      - internal
+
+$(db_services_yaml "$slug")
+
+volumes:
+  db_data:
+
+networks:
+  proxy:
+    external: true
+  internal:
+    driver: bridge
+EOF
+    else
+        cat >> "$compose" <<'EOF'
 
 networks:
   proxy:
     external: true
 EOF
+    fi
 
     cat > "$dir/.gitignore" <<'EOF'
 .env
@@ -691,7 +822,15 @@ server {
 }
 NGINX_EOF
 
-    cat > "$dir/docker-compose.yml" <<EOF
+    local db_name db_user db_password
+    if [ "${use_db:-n}" = "y" ]; then
+        write_db_env "$dir" "$slug" "The PHP container gets them as DB_NAME, DB_USER and DB_PASSWORD (read them with getenv)"
+    fi
+
+    # docker-compose.yml — written in parts, so the database pieces go in only
+    # when the project has one
+    local compose="$dir/docker-compose.yml"
+    cat > "$compose" <<EOF
 services:
 
   # ── Nginx web server ─────────────────────────────────────────────────────────
@@ -720,11 +859,31 @@ services:
     build: .
     container_name: ${slug}-php
     restart: unless-stopped
+EOF
+    [ "${use_db:-n}" = "y" ] && php_db_depends_yaml >> "$compose"
+    cat >> "$compose" <<'EOF'
     volumes:
       - ./src:/var/www/html
+EOF
+    if [ "${use_db:-n}" = "y" ]; then
+        echo "    environment:" >> "$compose"
+        php_db_env_yaml >> "$compose"
+    fi
+    cat >> "$compose" <<'EOF'
     networks:
       - internal
 
+EOF
+    if [ "${use_db:-n}" = "y" ]; then
+        cat >> "$compose" <<EOF
+$(db_services_yaml "$slug")
+
+volumes:
+  db_data:
+
+EOF
+    fi
+    cat >> "$compose" <<'EOF'
 networks:
   proxy:
     external: true
@@ -750,28 +909,13 @@ create_wordpress_apache() {
     local slug="$1"
     local dir="$DEV_DIR/$slug"
 
-    local db_name db_user
-    db_name=$(db_identifier "$slug" db 64)
-    db_user=$(db_identifier "$slug" user 32)
-    local db_password
-    local db_root_password
-    db_password=$(gen_password)
-    db_root_password=$(gen_password)
+    local db_name db_user db_password
 
     mkdir -p "$dir/src"
 
     # .env — credentials for the MySQL container.
     # Use the same values in wp-config.php or Bedrock's src/.env.
-    # DO NOT commit this file.
-    cat > "$dir/.env" <<EOF
-# Database credentials — generated automatically
-# Use these values when configuring WordPress (wp-config.php or src/.env for Bedrock)
-# The database host inside Docker is always: db
-MYSQL_DATABASE=${db_name}
-MYSQL_USER=${db_user}
-MYSQL_PASSWORD=${db_password}
-MYSQL_ROOT_PASSWORD=${db_root_password}
-EOF
+    write_db_env "$dir" "$slug" "Use these values when configuring WordPress (wp-config.php or src/.env for Bedrock)"
 
     cat > "$dir/.gitignore" <<'EOF'
 .env
@@ -925,47 +1069,7 @@ services:
       - proxy
       - internal
 
-  # ── MySQL database ────────────────────────────────────────────────────────────
-  db:
-    image: mysql:8.0
-    container_name: ${slug}-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: \${MYSQL_DATABASE}
-      MYSQL_USER: \${MYSQL_USER}
-      MYSQL_PASSWORD: \${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD}
-    volumes:
-      - db_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p\${MYSQL_ROOT_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-
-  # ── phpMyAdmin ────────────────────────────────────────────────────────────────
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: ${slug}-phpmyadmin
-    restart: unless-stopped
-    depends_on:
-      - db
-    environment:
-      PMA_HOST: db
-      PMA_USER: \${MYSQL_USER}
-      PMA_PASSWORD: \${MYSQL_PASSWORD}
-      UPLOAD_LIMIT: 256M
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${slug}-pma.rule=Host(\`${slug}-db.test\`)"
-      - "traefik.http.routers.${slug}-pma.entrypoints=websecure"
-      - "traefik.http.routers.${slug}-pma.tls=true"
-      - "traefik.http.services.${slug}-pma.loadbalancer.server.port=80"
-    networks:
-      - proxy
-      - internal
+$(db_services_yaml "$slug")
 
   # ── MailHog — captures all outgoing PHP mail ──────────────────────────────────
   mailhog:
@@ -1045,25 +1149,13 @@ create_wordpress_nginx() {
     local slug="$1"
     local dir="$DEV_DIR/$slug"
 
-    local db_name db_user
-    db_name=$(db_identifier "$slug" db 64)
-    db_user=$(db_identifier "$slug" user 32)
-    local db_password
-    local db_root_password
-    db_password=$(gen_password)
-    db_root_password=$(gen_password)
+    local db_name db_user db_password
 
     mkdir -p "$dir/src" "$dir/nginx"
 
-    cat > "$dir/.env" <<EOF
-# Database credentials — generated automatically
-# Use these values when configuring WordPress (wp-config.php or src/.env for Bedrock)
-# The database host inside Docker is always: db
-MYSQL_DATABASE=${db_name}
-MYSQL_USER=${db_user}
-MYSQL_PASSWORD=${db_password}
-MYSQL_ROOT_PASSWORD=${db_root_password}
-EOF
+    # .env — credentials for the MySQL container.
+    # Use the same values in wp-config.php or Bedrock's src/.env.
+    write_db_env "$dir" "$slug" "Use these values when configuring WordPress (wp-config.php or src/.env for Bedrock)"
 
     cat > "$dir/.gitignore" <<'EOF'
 .env
@@ -1264,47 +1356,7 @@ services:
     networks:
       - internal
 
-  # ── MySQL database ────────────────────────────────────────────────────────────
-  db:
-    image: mysql:8.0
-    container_name: ${slug}-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: \${MYSQL_DATABASE}
-      MYSQL_USER: \${MYSQL_USER}
-      MYSQL_PASSWORD: \${MYSQL_PASSWORD}
-      MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD}
-    volumes:
-      - db_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p\${MYSQL_ROOT_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-
-  # ── phpMyAdmin ────────────────────────────────────────────────────────────────
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: ${slug}-phpmyadmin
-    restart: unless-stopped
-    depends_on:
-      - db
-    environment:
-      PMA_HOST: db
-      PMA_USER: \${MYSQL_USER}
-      PMA_PASSWORD: \${MYSQL_PASSWORD}
-      UPLOAD_LIMIT: 256M
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${slug}-pma.rule=Host(\`${slug}-db.test\`)"
-      - "traefik.http.routers.${slug}-pma.entrypoints=websecure"
-      - "traefik.http.routers.${slug}-pma.tls=true"
-      - "traefik.http.services.${slug}-pma.loadbalancer.server.port=80"
-    networks:
-      - proxy
-      - internal
+$(db_services_yaml "$slug")
 
   # ── MailHog — captures all outgoing PHP mail ──────────────────────────────────
   mailhog:
@@ -1654,6 +1706,15 @@ main() {
         fi
     fi
 
+    # ── Database (PHP only; WordPress always has one) ─────────────────────────
+    use_db="n"
+    if [ "$container_type" = "php" ]; then
+        read -rp "  Add a MySQL database? [y/N] " db_answer
+        if [[ "$db_answer" =~ ^[Yy]$ ]]; then
+            use_db="y"
+        fi
+    fi
+
     # ── Summary ───────────────────────────────────────────────────────────────
     echo ""
     echo -e "  ${BOLD}Summary${RESET}"
@@ -1676,6 +1737,9 @@ main() {
             echo "  Bedrock:   $([ "$use_bedrock" = "y" ] && echo yes || echo no)"
         fi
         echo "  Composer:  $([ "$install_composer" = "y" ] && echo yes || echo no)"
+        if [ "$container_type" = "php" ]; then
+            echo "  Database:  $([ "$use_db" = "y" ] && echo "MySQL + phpMyAdmin" || echo no)"
+        fi
     fi
     echo "  Location:  $DEV_DIR/$slug"
     if [ "$container_type" = "remote" ]; then
@@ -1683,8 +1747,10 @@ main() {
     else
         echo "  URL:       https://${slug}.test"
     fi
-    if [ "$container_type" = "wordpress" ]; then
+    if [ "$container_type" = "wordpress" ] || [ "$use_db" = "y" ]; then
         echo "  DB admin:  https://${slug}-db.test"
+    fi
+    if [ "$container_type" = "wordpress" ]; then
         echo "  Mail:      https://${slug}-mail.test"
     fi
     echo "  ─────────────────────────────────────"
@@ -1718,6 +1784,8 @@ main() {
     if [ "$container_type" = "wordpress" ]; then
         add_hosts_entry "${slug}-db.test"
         add_hosts_entry "${slug}-mail.test"
+    elif [ "$use_db" = "y" ]; then
+        add_hosts_entry "${slug}-db.test"
     fi
 
     # ── Start containers ──────────────────────────────────────────────────────
@@ -1766,6 +1834,12 @@ main() {
         echo ""
         echo -e "  DB credentials → ${BOLD}$DEV_DIR/$slug/.env${RESET}"
         echo -e "  DB host (inside Docker) → ${BOLD}db${RESET}"
+    fi
+    if [ "$use_db" = "y" ]; then
+        echo -e "  DB admin: ${BOLD}https://${slug}-db.test${RESET}"
+        echo ""
+        echo -e "  DB credentials → ${BOLD}$DEV_DIR/$slug/.env${RESET}"
+        echo -e "  In PHP → ${BOLD}getenv('DB_HOST')${RESET}, DB_NAME, DB_USER, DB_PASSWORD"
     fi
     if [ "$use_bedrock" = "y" ]; then
         echo -e "  Bedrock .env → ${BOLD}$DEV_DIR/$slug/src/.env${RESET} (ready to use)"

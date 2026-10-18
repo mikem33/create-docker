@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Optional database for PHP projects** — `create-docker` asks `Add a MySQL database? [y/N]`
+  for the PHP type (Apache and Nginx + FPM)
+  - Adds the same `mysql:8.0` and phpMyAdmin (`https://{slug}-db.test`) services as WordPress,
+    with generated credentials in `.env`
+  - The PHP container gets them as `DB_HOST`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`, to read
+    with `getenv()`, and waits until MySQL is healthy
+  - Declining leaves the generated project unchanged
+  - The credentials and MySQL/phpMyAdmin services come from shared functions now also used by
+    WordPress; WordPress output is unchanged
+
 - **Remote DB** — a fourth container type: phpMyAdmin for a MySQL server on another machine,
   through an SSH tunnel; served at `https://{slug}.test` and managed with `start-docker` /
   `stop-docker` / `delete-docker` like any project

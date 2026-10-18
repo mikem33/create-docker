@@ -4,7 +4,7 @@ A Bash script that spins up local web development environments with a single com
 
 ## Features
 
-- **Four ready-to-use environments**: HTML (Nginx), PHP 8.3 (Apache/Nginx), Vite (dev server), and WordPress (PHP + MySQL + phpMyAdmin + MailHog)
+- **Four ready-to-use environments**: HTML (Nginx), PHP 8.3 (Apache/Nginx, optional MySQL + phpMyAdmin), Vite (dev server), and WordPress (PHP + MySQL + phpMyAdmin + MailHog)
 - **Remote DB** — phpMyAdmin for a MySQL server on another machine, through an SSH tunnel
 - **Automatic HTTPS** with trusted local certificates via [mkcert](https://github.com/FiloSottile/mkcert)
 - **Custom `.test` domains** — access your project at `https://my-project.test`
@@ -170,6 +170,8 @@ You choose the web server when creating the project:
 
 Both variants install `pdo`, `pdo_mysql`, and `mysqli`. A `phpinfo()` page is created at `src/index.php` to confirm the environment is working.
 
+`create-docker` then asks `Add a MySQL database? [y/N]`. With `y`, the project gets the same `mysql:8.0` and phpMyAdmin (`https://{slug}-db.test`) as WordPress, credentials in `.env`, and the PHP container receives them as environment variables — see [Connecting to the database](#connecting-to-the-database).
+
 ### WordPress environment
 
 You choose the web server when creating the project (Apache or Nginx + FPM). Both variants include:
@@ -224,7 +226,7 @@ Without the wrapper, use `docker compose exec web composer …` (Apache) or `doc
 ```
 ~/Dev/{slug}/
 ├── docker-compose.yml
-├── .env                # WordPress only — DB credentials (gitignored)
+├── .env                # WordPress, or PHP with a database — DB credentials (gitignored)
 ├── .gitignore          # PHP / WordPress only
 ├── Dockerfile          # PHP / WordPress only
 └── src/                # Your web files go here
@@ -232,9 +234,21 @@ Without the wrapper, use `docker compose exec web composer …` (Apache) or `doc
 
 The global reverse proxy lives at `~/Dev/.proxy/` and is shared across all projects — it is not tied to any individual project.
 
-## Connecting WordPress to the database
+## Connecting to the database
 
-Database credentials are auto-generated and stored in `~/Dev/{slug}/.env`. Use them when WordPress asks for connection details.
+Database credentials are auto-generated and stored in `~/Dev/{slug}/.env`.
+
+**PHP with a database** — the PHP container gets them as environment variables; read them in your code instead of hardcoding values:
+
+```php
+$pdo = new PDO(
+    'mysql:host=' . getenv('DB_HOST') . ';dbname=' . getenv('DB_NAME'),
+    getenv('DB_USER'),
+    getenv('DB_PASSWORD'),
+);
+```
+
+**WordPress** — use them when WordPress asks for connection details.
 
 **Standard WordPress** (`wp-config.php`):
 
