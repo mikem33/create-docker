@@ -116,7 +116,7 @@ Older projects run `pnpm install && pnpm dev` on their own as root, from `image:
 1. Stop it: `stop-docker {slug}`
 2. Write the new `Dockerfile` and replace the `vite` service in `docker-compose.yml` with what `create-docker` generates now (`build: .`, `init: true`, no `command`, `working_dir` or `CI`).
 3. Remove the root-owned files: `sudo rm -rf src/node_modules` (plus the stub `package.json` and `pnpm-lock.yaml` if `src/` held no project).
-4. Remove the root-owned store, so it is recreated owned by `node`: `docker volume rm {slug}_pnpm_store`
+4. Remove the containers (`stop-docker` only stops them, and a stopped container still holds the volume), then the root-owned store, so it is recreated owned by `node`: `docker compose down`, then `docker volume rm {slug}_pnpm_store`
 5. `start-docker {slug}`, then `pnpm install` and `pnpm dev` from `src/`.
 
 ### Accessing the site
