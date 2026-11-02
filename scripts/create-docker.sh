@@ -331,8 +331,11 @@ EOF
 }
 
 # ─── Vite container ──────────────────────────────────────────────────────────
-# Two services: node container runs Vite dev server, nginx proxies to it.
-# Both share an internal network; nginx also connects to Traefik's proxy network.
+# Two services: a node container that holds Node and pnpm, and nginx proxying to
+# the Vite dev server on it. Both share an internal network; nginx also connects
+# to Traefik's proxy network. The node container runs nothing by itself: the user
+# runs `pnpm install` / `pnpm dev` in it through the pnpm wrapper (pnpm.sh), so
+# Vite's output lands in their terminal and an empty src/ stays empty.
 
 create_vite() {
     local slug="$1"
@@ -360,18 +363,44 @@ server {
 }
 NGINX_EOF
 
+    cat > "$dir/Dockerfile" <<'EOF'
+FROM node:lts-alpine
+
+# pnpm comes from corepack, which honours a project's "packageManager" field.
+# Node 25+ no longer bundles corepack, so install it from npm instead of relying
+# on the image (--force replaces the bundled copy where there still is one).
+# Shims go to /usr/local/bin, which needs root, so this runs before USER node.
+# /pnpm/store is created here, owned by node, so the pnpm_store volume starts
+# out writable for node when Docker first fills it from the image.
+RUN npm install -g corepack@latest --force \
+    && corepack enable pnpm \
+    && mkdir -p /pnpm/store && chown node:node /pnpm/store
+
+# Never stop to ask before corepack downloads pnpm.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+# Run as node (UID/GID 1000, the host user), so node_modules, the lockfile and
+# build output in src/ belong to the host user. The store lives in the volume
+# rather than pnpm's default, which on a separate mount would land in src/.
+USER node
+RUN pnpm config set store-dir /pnpm/store --global
+
+WORKDIR /app
+
+# Idle until the user runs pnpm here; with nothing to run there is nothing to
+# fail and restart. The compose file sets init: true, so stopping is instant.
+CMD ["sleep", "infinity"]
+EOF
+
     cat > "$dir/docker-compose.yml" <<EOF
 services:
   vite:
-    image: node:lts-alpine
+    build: .
     container_name: ${slug}-vite
-    working_dir: /app
+    init: true
     volumes:
       - ./src:/app
       - pnpm_store:/pnpm/store
-    environment:
-      - CI=true
-    command: sh -c "corepack enable && pnpm install --store-dir /pnpm/store && pnpm dev"
     restart: unless-stopped
     networks:
       - internal
@@ -1819,10 +1848,11 @@ main() {
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"
         echo "  1. Clone your project into $DEV_DIR/$slug/src/"
-        echo "  2. Vite dev server starts automatically with docker compose"
+        echo -e "  2. In that folder run ${BOLD}pnpm install${RESET}, then ${BOLD}pnpm dev${RESET} (needs the pnpm wrapper on PATH)"
         echo "  3. Open https://${slug}.test in your browser"
         echo ""
-        echo -e "  Container logs: ${BOLD}docker compose -f $DEV_DIR/$slug/docker-compose.yml logs -f${RESET}"
+        echo "  The project needs a \"dev\" script that starts Vite on 0.0.0.0:5173"
+        echo "  and allows the host ${slug}.test (server.host, server.allowedHosts)."
     elif [ "$container_type" = "html" ] && [ "$html_type" = "static" ]; then
         echo ""
         echo -e "  ${BOLD}Next steps:${RESET}"

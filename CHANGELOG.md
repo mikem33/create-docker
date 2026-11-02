@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`install.sh`** — links every command (`create-docker`, `delete-docker`, `start-docker`,
+  `stop-docker`, `wp`, `composer`, `pnpm`) into `~/.local/bin`; safe to run again, `--dry`
+  shows what it would do, and a name already taken by something else is skipped, not replaced
+
+- **`pnpm` wrapper** (`scripts/pnpm.sh`, symlinked as `pnpm`) — inside a Vite project it runs
+  pnpm in the project's `vite` container, mirroring the current folder under `/app`; anywhere
+  else it runs the host's pnpm unchanged
+  - Output stays in the terminal; Ctrl+C stops `pnpm dev`, and so does closing the terminal
+    (Docker would otherwise leave it running, and the next one would move to port 5174)
+
 - **Optional database for PHP projects** — `create-docker` asks `Add a MySQL database? [y/N]`
   for the PHP type (Apache and Nginx + FPM)
   - Adds the same `mysql:8.0` and phpMyAdmin (`https://{slug}-db.test`) services as WordPress,
@@ -54,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Declining leaves every generated file byte-for-byte unchanged
 
 ### Changed
+- **Vite container no longer runs pnpm by itself** — it idles until the user runs `pnpm install` /
+  `pnpm dev` (through the wrapper), so an empty `src/` stays empty and there is no restart loop
+  while it has no project
+  - Built from a generated `Dockerfile`: corepack installed from npm (Node 25+ no longer bundles
+    it), runs as `node` (UID/GID 1000), so files in `src/` belong to the host user
+  - pnpm's store stays in the `pnpm_store` volume (now owned by `node`); `CI=true` is gone
+  - Docs no longer promise a generated `vite.config.js`; they say what a project must bring
+    (`dev` script, `0.0.0.0:5173`, `server.allowedHosts`) and how to update older projects
+
 - **Bedrock install docs** — `_docs/containers.md` no longer tells you to run Composer on the
   host and fill in `src/.env` by hand
 

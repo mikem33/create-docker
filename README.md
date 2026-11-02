@@ -30,28 +30,11 @@ The script checks for all three on startup and prints installation instructions 
 # Clone the repository
 git clone https://github.com/your-username/create-docker.git ~/Dev/create-docker
 
-# Make the scripts executable
-chmod +x ~/Dev/create-docker/scripts/create-docker.sh
-chmod +x ~/Dev/create-docker/scripts/delete-docker.sh
-chmod +x ~/Dev/create-docker/scripts/start-docker.sh
-chmod +x ~/Dev/create-docker/scripts/stop-docker.sh
-chmod +x ~/Dev/create-docker/scripts/wp.sh
-chmod +x ~/Dev/create-docker/scripts/composer.sh
-
-# Add to PATH (assuming ~/.local/bin is in your PATH)
-ln -s ~/Dev/create-docker/scripts/create-docker.sh ~/.local/bin/create-docker
-ln -s ~/Dev/create-docker/scripts/delete-docker.sh ~/.local/bin/delete-docker
-ln -s ~/Dev/create-docker/scripts/start-docker.sh ~/.local/bin/start-docker
-ln -s ~/Dev/create-docker/scripts/stop-docker.sh ~/.local/bin/stop-docker
-
-# Optional: run WP-CLI from the host as if WordPress were installed locally
-ln -s ~/Dev/create-docker/scripts/wp.sh ~/.local/bin/wp
-
-# Optional: run Composer from the host, in projects created with Composer
-ln -s ~/Dev/create-docker/scripts/composer.sh ~/.local/bin/composer
+# Link the commands into ~/.local/bin (safe to run again; --dry shows what it would do)
+~/Dev/create-docker/install.sh
 ```
 
-> **Note:** skip the `wp` or `composer` symlink if you already have that command on your PATH — it would shadow it.
+> **Note:** `install.sh` links `create-docker`, `delete-docker`, `start-docker`, `stop-docker`, `wp`, `composer` and `pnpm`. If one of those names is already taken in `~/.local/bin` (e.g. your own `wp`), it leaves it alone, skips that command and says so. `wp` and `composer` act inside PHP / WordPress projects, `pnpm` inside Vite projects; outside a Vite project created by `create-docker`, `pnpm` hands over to the host's pnpm unchanged, so `~/.local/bin` must come before it on your PATH (the script warns otherwise).
 
 > **Note:** If `~/.local/bin` is not in your PATH, add `export PATH="$HOME/.local/bin:$PATH"` to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
 
@@ -148,16 +131,25 @@ A starter `index.html` is created in `src/`. Drop your files there.
 
 | Detail | Value |
 |---|---|
-| Image | Node.js with Vite and your framework of choice |
+| Image | `node:lts-alpine` + corepack/pnpm (built), runs as your host user |
 | Site URL | `https://{slug}.test` |
-| Dev server | Running inside Docker with HMR via Traefik proxy |
-| Web root | `~/Dev/{slug}/src/` |
+| Dev server | Your project's own Vite, started by you inside Docker, with HMR via Traefik |
+| Project folder | `~/Dev/{slug}/src/` (left empty — clone your project into it) |
 
-The Vite dev server runs inside Docker and is proxied through Traefik, enabling:
-- Hot Module Replacement (HMR) across the HTTPS proxy
-- Consistent environment between dev and CI/CD
-- Support for React, Vue, Svelte, and other frameworks
-- Auto-generated `vite.config.js` configured for the Docker environment
+The container brings Node and pnpm, not Vite: Vite and its config come from your project. The container runs nothing by itself; with the `pnpm` wrapper on your PATH you work as you would locally, and the output stays in your terminal:
+
+```bash
+git clone https://github.com/you/your-repo.git ~/Dev/my-project/src
+cd ~/Dev/my-project/src
+pnpm install
+pnpm dev        # Ctrl+C stops it; closing the terminal stops it too
+```
+
+Your project must bring:
+- a `dev` script in `package.json` that starts the Vite dev server;
+- a dev server listening on `0.0.0.0` (`server.host`) on port 5173 (Vite's default), and accepting the `{slug}.test` host (`server.allowedHosts`) — otherwise nginx cannot reach it or Vite rejects the request.
+
+Files pnpm creates in `src/` (`node_modules/`, the lockfile, build output) are owned by your host user. Without the wrapper, use `docker compose exec vite pnpm …`. See [_docs/containers.md](_docs/containers.md#vite--modern-frontend-development).
 
 ### PHP 8.3
 
@@ -228,7 +220,7 @@ Without the wrapper, use `docker compose exec web composer …` (Apache) or `doc
 ├── docker-compose.yml
 ├── .env                # WordPress, or PHP with a database — DB credentials (gitignored)
 ├── .gitignore          # PHP / WordPress only
-├── Dockerfile          # PHP / WordPress only
+├── Dockerfile          # PHP / WordPress / Vite
 └── src/                # Your web files go here
 ```
 

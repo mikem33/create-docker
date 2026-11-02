@@ -42,31 +42,37 @@ https://{slug}.test
 ```
 ~/Dev/{slug}/
 ├── docker-compose.yml
+├── Dockerfile          ← node:lts-alpine + corepack/pnpm, runs as node (UID 1000)
 ├── nginx/
 │   └── nginx.conf      ← proxies Vite dev server, handles HMR WebSocket
 └── src/                ← clone your project here
 ```
 
-No starter files are created in `src/` — the expectation is that you clone an existing project (React, Vue, Svelte, Pandora, etc.) into that folder.
+No starter files are created in `src/`, and nothing writes there until you run pnpm — the expectation is that you clone an existing project (React, Vue, Svelte, Pandora, etc.) into that folder.
 
 ### Services
 
 | Service | Image | Role |
 |---|---|---|
-| `vite` | `node:lts-alpine` | Runs `pnpm install` then `pnpm dev` |
+| `vite` | built from `Dockerfile` | Holds Node and pnpm; idles until you run pnpm in it |
 | `web` | `nginx:alpine` | Proxies HTTP and WebSocket traffic to `vite:5173` |
 
 Only `web` connects to the `proxy` network (Traefik). The `vite` container lives on the `internal` network and is not directly exposed.
 
 ### How it works
 
-On container start, the `vite` service runs:
+The `vite` container starts and waits (`sleep infinity`); it never runs `pnpm install` or `pnpm dev` by itself. You run them, so their output — compile errors included — stays in your terminal, and an empty `src/` stays empty. The `pnpm` wrapper (`scripts/pnpm.sh`, symlinked as `~/.local/bin/pnpm`) makes that look local:
 
-```bash
-corepack enable && pnpm install --store-dir /pnpm/store && pnpm dev
-```
+- Inside a Vite project (a `docker-compose.yml` with a `vite` service, found by walking up from the current folder), it runs `pnpm` in that project's `vite` container, in the matching folder under `/app`, and prints `→ pnpm in {slug}-vite` on stderr.
+- Anywhere else — no project, or a PHP / WordPress one — it runs the host's own pnpm unchanged.
+- Ctrl+C stops `pnpm dev`. Closing the terminal stops it too: Docker does not end an exec'd process when its client goes away, so the wrapper does it, or the next `pnpm dev` would quietly move to port 5174, which nginx does not proxy.
+- If the container is not running, it says so and points at `start-docker {slug}`.
 
-Nginx then proxies all traffic — including WebSocket connections for Hot Module Replacement — to `vite:5173`:
+Without the wrapper: `docker compose -f ~/Dev/{slug}/docker-compose.yml exec vite pnpm dev`.
+
+Until `pnpm dev` runs, `https://{slug}.test` answers `502 Bad Gateway`.
+
+Nginx proxies all traffic — including WebSocket connections for Hot Module Replacement — to `vite:5173`:
 
 ```
 Browser → Traefik (HTTPS) → nginx:80 → vite:5173
@@ -74,13 +80,24 @@ Browser → Traefik (HTTPS) → nginx:80 → vite:5173
 
 The WebSocket upgrade headers are forwarded correctly so HMR works through the HTTPS proxy without any extra Vite configuration.
 
+### What the project must bring
+
+The container brings no Vite of its own: `pnpm install` installs the project's Vite and `pnpm dev` runs the project's `dev` script with its own `vite.config.js`. Nothing is generated for it. The project needs:
+
+- a `dev` script in `package.json` that starts the Vite dev server;
+- the dev server listening on `0.0.0.0` (`server.host`) on port 5173 (Vite's default), and accepting the `{slug}.test` host (`server.allowedHosts`), or nginx cannot reach it / Vite rejects the request.
+
+`pandora-boilerplate`'s `vite.config.js` already does both.
+
+### File ownership
+
+The container runs as the image's `node` user, UID/GID 1000 — the host user, as the PHP containers do with `www-data`. `node_modules/`, the lockfile and build output in `src/` belong to you, and `rm -rf src/node_modules` needs no `sudo`.
+
+pnpm itself comes from corepack, installed from npm in the `Dockerfile` (Node 25+ no longer bundles it), so a project's `packageManager` field picks the pnpm version.
+
 ### pnpm cache
 
-The pnpm package store is mounted as a named Docker volume (`pnpm_store`) shared across container restarts. Packages are only downloaded once — subsequent starts reuse the cached store. The volume is removed when `delete-docker` is run.
-
-### Non-interactive pnpm
-
-`CI=true` is set in the container environment. This prevents pnpm from prompting to confirm purging `node_modules` when it detects a lockfile or settings change — which would otherwise hang the container indefinitely with no TTY to respond to.
+The pnpm package store is a named Docker volume (`pnpm_store`, mounted at `/pnpm/store` and set as pnpm's `store-dir`) shared across container restarts. Packages are only downloaded once — subsequent installs reuse the cached store. The volume is removed when `delete-docker` is run.
 
 ### First-run workflow
 
@@ -89,8 +106,18 @@ The pnpm package store is mounted as a named Docker volume (`pnpm_store`) shared
    ```bash
    git clone https://github.com/you/your-repo.git ~/Dev/my-project/src
    ```
-3. The containers start automatically (or run `start-docker my-project`)
+3. From that folder, `pnpm install`, then `pnpm dev`
 4. Open `https://my-project.test` — Vite serves the dev build with HMR
+
+### Updating a Vite project created before this change
+
+Older projects run `pnpm install && pnpm dev` on their own as root, from `image: node:lts-alpine`. Their `node_modules/` (and any stub files written into an empty `src/`) are owned by root, and so is their `pnpm_store` volume. To bring one up to date, from `~/Dev/{slug}`:
+
+1. Stop it: `stop-docker {slug}`
+2. Write the new `Dockerfile` and replace the `vite` service in `docker-compose.yml` with what `create-docker` generates now (`build: .`, `init: true`, no `command`, `working_dir` or `CI`).
+3. Remove the root-owned files: `sudo rm -rf src/node_modules` (plus the stub `package.json` and `pnpm-lock.yaml` if `src/` held no project).
+4. Remove the root-owned store, so it is recreated owned by `node`: `docker volume rm {slug}_pnpm_store`
+5. `start-docker {slug}`, then `pnpm install` and `pnpm dev` from `src/`.
 
 ### Accessing the site
 
