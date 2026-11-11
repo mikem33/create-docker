@@ -149,6 +149,8 @@ Your project must bring:
 - a `dev` script in `package.json` that starts the Vite dev server;
 - a dev server listening on `0.0.0.0` (`server.host`) on port 5173 (Vite's default), and accepting the `{slug}.test` host (`server.allowedHosts`) — otherwise nginx cannot reach it or Vite rejects the request.
 
+`pnpm release` and `pnpm prod` are the exception: they commit and push, so the wrapper runs them on the host, where git and your SSH keys are; the container has neither.
+
 Files pnpm creates in `src/` (`node_modules/`, the lockfile, build output) are owned by your host user. Without the wrapper, use `docker compose exec vite pnpm …`. See [_docs/containers.md](_docs/containers.md#vite--modern-frontend-development).
 
 ### PHP 8.3

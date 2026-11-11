@@ -45,6 +45,38 @@ if [[ ! -f "$root/docker-compose.yml" ]] || ! grep -q '^  vite:' "$root/docker-c
     run_host_pnpm "$@"
 fi
 
+# ─── Scripts that run on the host ────────────────────────────────────────────
+# The container has no git and no SSH keys, on purpose. Scripts that commit,
+# tag or push (release, prod) run here instead, with the host's node, git and
+# keys: the package.json script's command runs as is, from the nearest
+# package.json at or above $PWD inside src/. A build they need goes back
+# through this wrapper (`pnpm build`) and so runs in the container.
+
+HOST_SCRIPTS=(release prod)
+
+run_on_host() {
+    local script="$1"; shift
+    local dir="$PWD" cmd
+    [[ "$dir" == "$root/src" || "$dir" == "$root/src"/* ]] || dir="$root/src"
+    while [[ "$dir" != "$root/src" && ! -f "$dir/package.json" ]]; do
+        dir="$(dirname "$dir")"
+    done
+    [[ -f "$dir/package.json" ]] || die "No package.json in $dir."
+    command -v node >/dev/null || die "\"$script\" runs on the host and needs node there."
+    cmd="$(node -e 'const s = require(process.argv[1]).scripts || {}; process.stdout.write(s[process.argv[2]] || "")' \
+        "$dir/package.json" "$script")"
+    [[ -n "$cmd" ]] || die "package.json in $dir has no \"$script\" script."
+    echo "${BLUE}→${RESET} pnpm $script on the host" >&2
+    cd "$dir"
+    exec sh -c "$cmd \"\$@\"" sh "$@"
+}
+
+script_args=("$@")
+[[ "${script_args[0]:-}" == "run" ]] && script_args=("${script_args[@]:1}")
+for name in "${HOST_SCRIPTS[@]}"; do
+    [[ "${script_args[0]:-}" == "$name" ]] && run_on_host "${script_args[@]}"
+done
+
 # ─── Find the running container ──────────────────────────────────────────────
 # Ask Compose rather than guessing "<dirname>-vite": the container_name is fixed
 # at creation time, so a renamed project directory would break name guessing.
